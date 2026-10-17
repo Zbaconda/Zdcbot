@@ -48,18 +48,18 @@ if (fs.existsSync(commandsPath)) {
 
             if (command.data && command.execute) {
                 client.commands.set(command.data.name, command);
-                console.log(`✅ Comando carregado: ${command.data.name}`);
+                console.log(`Comando carregado: ${command.data.name}`);
             } else {
                 console.log(`⚠️ ${file} precisa de data e execute.`);
             }
         } catch (error) {
-            console.error(`❌ Erro ao carregar ${file}:`, error);
+            console.error(`Erro ao carregar ${file}:`, error);
         }
     }
 }
 
 client.once('clientReady', readyClient => {
-    console.log(`🤖 Bot online como ${readyClient.user.tag}`);
+    console.log(`Bot online como ${readyClient.user.tag}`);
 });
 
 // FUNÇÕES AUXILIARES
@@ -72,7 +72,11 @@ function eBooster(membro) {
 }
 
 function tempoCooldown(membro, ferramenta) {
-    if (['criar_call', 'privar_call'].includes(ferramenta)) {
+    if ([
+        'criar_call',
+        'privar_call',
+        'desprivar_call'
+    ].includes(ferramenta)) {
         return 0;
     }
 
@@ -279,7 +283,7 @@ client.on('interactionCreate', async interaction => {
                 PermissionFlagsBits.MoveMembers
             )) {
                 return interaction.update({
-                    content: '❌ Preciso da permissão **Mover membros**.',
+                    content: '❌ Preciso da permissão Mover membros.',
                     components: []
                 });
             }
@@ -292,7 +296,6 @@ client.on('interactionCreate', async interaction => {
                 });
             }
 
-            // Verificar cooldown antes de mover
             if (!await verificarCooldown(
                 interaction, membro, 'mover'
             )) {
@@ -453,10 +456,97 @@ client.on('interactionCreate', async interaction => {
             // PAINEL DE CALL
             // =====================================
             if (interaction.customId === 'controle_call') {
+                const ferramenta = interaction.values[0];
+
                 const membro = await interaction.guild.members.fetch(
                     interaction.user.id
                 );
 
+                // =================================
+                // CRIAR CALL
+                // Não exige estar em outra call
+                // =================================
+                if (ferramenta === 'criar_call') {
+                    const categoria = await interaction.guild.channels
+                        .fetch(CATEGORIA_CALL)
+                        .catch(() => null);
+
+                    if (!categoria ||
+                        categoria.type !== ChannelType.GuildCategory) {
+                        return responderErro(
+                            interaction,
+                            '❌ A categoria configurada não foi encontrada. Verifique o ID.'
+                        );
+                    }
+
+                    const botMembro = await interaction.guild.members.fetchMe();
+
+                    if (!botMembro.permissions.has(
+                        PermissionFlagsBits.ManageChannels
+                    )) {
+                        return responderErro(
+                            interaction,
+                            '❌ Preciso da permissão Gerenciar canais.'
+                        );
+                    }
+
+                    if (!await verificarCooldown(
+                        interaction, membro, 'criar_call'
+                    )) return;
+
+                    // Usa o nick do servidor; se não existir, usa o username.
+                    const nome = (membro.nickname || interaction.user.username)
+                        .trim()
+                        .slice(0, 100) || 'Nova call';
+
+                    const novoCanal = await interaction.guild.channels.create({
+                        name: nome,
+                        type: ChannelType.GuildVoice,
+                        parent: categoria.id,
+                        permissionOverwrites: [
+                            {
+                                id: interaction.guild.roles.everyone.id,
+                                allow: [
+                                    PermissionFlagsBits.ViewChannel,
+                                    PermissionFlagsBits.Connect
+                                ]
+                            },
+                            {
+                                id: interaction.user.id,
+                                allow: [
+                                    PermissionFlagsBits.ViewChannel,
+                                    PermissionFlagsBits.Connect
+                                ]
+                            }
+                        ]
+                    });
+
+                    // Tenta mover automaticamente se o bot tiver permissão.
+                    if (
+                        botMembro.permissions.has(
+                            PermissionFlagsBits.MoveMembers
+                        ) &&
+                        novoCanal.permissionsFor(botMembro)
+                            ?.has(PermissionFlagsBits.Connect)
+                    ) {
+                        try {
+                            await membro.voice.setChannel(novoCanal);
+                        } catch (error) {
+                            console.error(
+                                'A call foi criada, mas não consegui mover o usuário:',
+                                error
+                            );
+                        }
+                    }
+
+                    return interaction.reply({
+                        content: `✅ Sua call **${nome}** foi criada!`,
+                        ephemeral: true
+                    });
+                }
+
+                // As ferramentas abaixo exigem que o usuário
+                // esteja conectado a uma call.
                 if (!estaEmVoz(membro)) {
                     return responderErro(
                         interaction,
@@ -464,9 +554,7 @@ client.on('interactionCreate', async interaction => {
                     );
                 }
 
-                const ferramenta = interaction.values[0];
-
-                // QUANTIDADE
+                // ALTERAR LIMITE
                 if (ferramenta === 'quantidade') {
                     return interaction.showModal(
                         criarModal(
@@ -549,71 +637,7 @@ client.on('interactionCreate', async interaction => {
                     });
                 }
 
-                // CRIAR CALL
-                if (ferramenta === 'criar_call') {
-                    const categoria = await interaction.guild.channels
-                        .fetch(CATEGORIA_CALL)
-                        .catch(() => null);
-
-                    if (!categoria ||
-                        categoria.type !== ChannelType.GuildCategory) {
-                        return responderErro(
-                            interaction,
-                            '❌ A categoria configurada não foi encontrada. Verifique o ID.'
-                        );
-                    }
-
-                    const botMembro = await interaction.guild.members.fetchMe();
-
-                    if (!botMembro.permissions.has(
-                        PermissionFlagsBits.ManageChannels
-                    )) {
-                        return responderErro(
-                            interaction,
-                            '❌ Preciso da permissão Gerenciar canais.'
-                        );
-                    }
-
-                    if (!await verificarCooldown(
-                        interaction, membro, 'criar_call'
-                    )) return;
-
-                    const nome = `call-${interaction.user.username}`
-                        .toLowerCase()
-                        .replace(/[^a-z0-9-]/g, '')
-                        .slice(0, 90) || 'nova-call';
-
-                    const novoCanal = await interaction.guild.channels.create({
-                        name: nome,
-                        type: ChannelType.GuildVoice,
-                        parent: categoria.id,
-                        permissionOverwrites: [
-                            {
-                                id: interaction.guild.roles.everyone.id,
-                                allow: [
-                                    PermissionFlagsBits.ViewChannel,
-                                    PermissionFlagsBits.Connect
-                                ]
-                            },
-                            {
-                                id: interaction.user.id,
-                                allow: [
-                                    PermissionFlagsBits.ViewChannel,
-                                    PermissionFlagsBits.Connect
-                                ]
-                            }
-                        ]
-                    });
-
-                    await membro.voice.setChannel(novoCanal);
-
-                    return interaction.reply({
-                        content: '✅ Sua call foi criada com sucesso!',
-                        ephemeral: true
-                    });
-                }
-
-                // PRIVAR / REABRIR CALL
+                // LOCK — FECHAR A CALL
                 if (ferramenta === 'privar_call') {
                     const canal = membro.voice.channel;
                     const botMembro = await interaction.guild.members.fetchMe();
@@ -626,29 +650,18 @@ client.on('interactionCreate', async interaction => {
                         );
                     }
 
-                    const todos = interaction.guild.roles.everyone;
-                    const permissaoAtual =
-                        canal.permissionOverwrites.cache.get(todos.id);
+                    if (!await verificarCooldown(
+                        interaction, membro, 'privar_call'
+                    )) return;
 
-                    const jaPrivada = permissaoAtual?.deny.has(
-                        PermissionFlagsBits.Connect
+                    await canal.permissionOverwrites.edit(
+                        interaction.guild.roles.everyone,
+                        {
+                            Connect: false
+                        }
                     );
 
-                    if (jaPrivada) {
-                        await canal.permissionOverwrites.edit(todos, {
-                            Connect: null
-                        });
-
-                        return interaction.reply({
-                            content: '🔓 Sua call voltou a permitir conexões conforme as permissões do canal.',
-                            ephemeral: true
-                        });
-                    }
-
-                    await canal.permissionOverwrites.edit(todos, {
-                        Connect: false
-                    });
-
+                    // Garante que quem ativou o Lock continue com acesso.
                     await canal.permissionOverwrites.edit(
                         interaction.user.id,
                         {
@@ -658,7 +671,37 @@ client.on('interactionCreate', async interaction => {
                     );
 
                     return interaction.reply({
-                        content: '🔒 Sua call foi privada com sucesso!',
+                        content: '🔒 A call foi trancada! Novas conexões estão bloqueadas.',
+                        ephemeral: true
+                    });
+                }
+
+                // UNLOCK — ABRIR A CALL
+                if (ferramenta === 'desprivar_call') {
+                    const canal = membro.voice.channel;
+                    const botMembro = await interaction.guild.members.fetchMe();
+
+                    if (!canal.permissionsFor(botMembro)
+                        ?.has(PermissionFlagsBits.ManageChannels)) {
+                        return responderErro(
+                            interaction,
+                            '❌ Preciso da permissão Gerenciar canais.'
+                        );
+                    }
+
+                    if (!await verificarCooldown(
+                        interaction, membro, 'desprivar_call'
+                    )) return;
+
+                    await canal.permissionOverwrites.edit(
+                        interaction.guild.roles.everyone,
+                        {
+                            Connect: null
+                        }
+                    );
+
+                    return interaction.reply({
+                        content: '🔓 A call foi destrancada! A entrada voltou a seguir as permissões do canal.',
                         ephemeral: true
                     });
                 }
@@ -676,7 +719,7 @@ client.on('interactionCreate', async interaction => {
         await comando.execute(interaction);
 
     } catch (error) {
-        console.error('❌ Erro na interação:', error);
+        console.error('Erro na interação:', error);
 
         await responderErro(
             interaction,
@@ -687,9 +730,9 @@ client.on('interactionCreate', async interaction => {
 
 // LIGAR BOT
 if (!process.env.DISCORD_TOKEN) {
-    console.error('❌ Token não encontrado nas variáveis de ambiente.');
+    console.error('Token não encontrado nas variáveis de ambiente.');
 } else {
     client.login(process.env.DISCORD_TOKEN).catch(error => {
-        console.error('❌ Falha ao conectar o bot:', error.message);
+        console.error('Falha ao conectar o bot:', error.message);
     });
 }
