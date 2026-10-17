@@ -31,7 +31,8 @@ module.exports = {
                 '**Precisa gerenciar sua call?**\n\n' +
                 'Selecione uma ferramenta no menu abaixo para utilizar os recursos de voz da Zodíaco.\n\n' +
                 '* **Criar call:** crie sua própria call.\n' +
-                '* **Privar call:** controle quem pode entrar.\n' +
+                '* **Privar call (Lock):** bloqueie a entrada de outras pessoas.\n' +
+                '* **Destrancar call (Unlock):** libere a entrada novamente.\n' +
                 '* **Quantidade:** defina o limite de pessoas.\n' +
                 '* **Mover:** mova um membro ou entre em outra call.\n' +
                 '* **Desmutar:** permita que um membro volte a falar, conforme as permissões.\n' +
@@ -39,7 +40,7 @@ module.exports = {
                 '**<:pureza_q:1561108867436257343> Tempo de espera**\n' +
                 '• __Membros: 60 segundos__.\n' +
                 '• __Boosters: 40 segundos__.\n' +
-                '• __Criar call e privar call__: ~~sem espera~~.\n\n' +
+                '• __Criar call, Lock e Unlock__: ~~sem espera~~.\n\n' +
                 'Utilize as ferramentas com responsabilidade! <:kxv:1561108869336530996>'
             )
             .setColor(0x2b2d31);
@@ -50,13 +51,18 @@ module.exports = {
             .addOptions(
                 {
                     label: 'Criar call',
-                    description: 'Crie uma call',
+                    description: 'Crie uma call com seu nick',
                     value: 'criar_call'
                 },
                 {
-                    label: 'Privar call',
-                    description: 'Controle o acesso à call',
+                    label: 'Lock (Privar call)',
+                    description: 'Bloqueie a entrada de outras pessoas',
                     value: 'privar_call'
+                },
+                {
+                    label: 'Unlock (Abrir call)',
+                    description: 'Libere a entrada novamente',
+                    value: 'desprivar_call'
                 },
                 {
                     label: 'Quantidade',
