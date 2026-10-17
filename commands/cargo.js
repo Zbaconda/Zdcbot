@@ -26,18 +26,14 @@ module.exports = {
 
     async execute(interaction) {
         const embed = new EmbedBuilder()
-            
-
-.setTitle('Cargos - Zod')
-.setDescription(
-  'Siga os passos abaixo para ter uma melhor experiência!\n\n' +
-  '<:zodiaco:1559627194903568464> Você só pode ter um cargo por vez.\n\n' +
-  '<:zodiaco:1559627194903568464> Deseja trocar de cargo? O cargo anterior será removido automaticamente.\n\n' +
-  '<:zodiaco:1559627194903568464> Para escolher um cargo, você deve estar com o link do servidor na bio.'
-)
-.setColor(0x2b2d31);
-
-
+            .setTitle('<:zodiaco:1559470811453333517> CARGOS')
+            .setDescription(
+                '**__Siga os passos abaixo para resgatar seu cargo decorativo.__**\n\n\n' +
+                '* Você só pode obter um cargo por vez.\n\n' +
+                '* Deseja trocar de cargo? O anterior será removido automaticamente.\n\n' +
+                '* Para escolher um cargo, você deve estar com o link do servidor na bio. <a:zodiaco:1559470718142652439>'
+            )
+            .setColor(0x2b2d31);
 
         const menu = new StringSelectMenuBuilder()
             .setCustomId('selecionar_cargo')
@@ -60,19 +56,15 @@ module.exports = {
     },
 
     async handleSelect(interaction) {
-        // Responder imediatamente para evitar timeout
         await interaction.deferReply({ ephemeral: true });
 
         try {
-            const membro = interaction.member;
             const cargoEscolhido = interaction.values[0];
 
-            // Verificar se o cargo existe nesta lista
             if (!cargos.some(cargo => cargo.value === cargoEscolhido)) {
                 return interaction.editReply('❌ Cargo inválido.');
             }
 
-            // Buscar o membro e os cargos no servidor
             const guildMember = await interaction.guild.members.fetch(
                 interaction.user.id
             );
@@ -81,19 +73,16 @@ module.exports = {
                 guildMember.roles.cache.has(cargo.value)
             );
 
-            // Impedir selecionar novamente o mesmo cargo
             if (guildMember.roles.cache.has(cargoEscolhido)) {
                 return interaction.editReply(
                     '❌ Você não pode ter esse cargo porque já possui ele!'
                 );
             }
 
-            // Remover somente o cargo anterior desta lista
             if (cargoAtual) {
                 await guildMember.roles.remove(cargoAtual.value);
             }
 
-            // Adicionar o novo cargo
             await guildMember.roles.add(cargoEscolhido);
 
             const nomeCargo = cargos.find(
