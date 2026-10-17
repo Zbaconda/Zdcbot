@@ -20,27 +20,27 @@ module.exports = {
             PermissionFlagsBits.Administrator
         )) {
             return interaction.reply({
-                content: '❌ Somente administradores podem publicar este painel.',
+                content: 'Somente administradores podem publicar este painel.',
                 ephemeral: true
             });
         }
 
         const embed = new EmbedBuilder()
-            .setTitle('🔊 FERRAMENTAS DE CALL')
+            .setTitle('<:membros:1561108865863516232> FERRAMENTAS DE CALL')
             .setDescription(
                 '**Precisa gerenciar sua call?**\n\n' +
                 'Selecione uma ferramenta no menu abaixo para utilizar os recursos de voz da Zodíaco.\n\n' +
-                '🔹 **Criar call:** crie sua própria call.\n' +
-                '🔹 **Privar call:** controle quem pode entrar.\n' +
-                '🔹 **Quantidade:** defina o limite de pessoas.\n' +
-                '🔹 **Mover:** mova um membro ou entre em outra call.\n' +
-                '🔹 **Desmutar:** permita que um membro volte a falar, conforme as permissões.\n' +
-                '🔹 **Mutar:** ferramenta exclusiva para Boosters.\n\n' +
-                '**⏱️ Tempo de espera**\n' +
-                '• Membros: 60 segundos.\n' +
-                '• Boosters: 40 segundos.\n' +
-                '• Criar call e privar call: sem espera.\n\n' +
-                'Utilize as ferramentas com responsabilidade! <a:zodiaco:1559734585347145840>'
+                '* **Criar call:** crie sua própria call.\n' +
+                '* **Privar call:** controle quem pode entrar.\n' +
+                '* **Quantidade:** defina o limite de pessoas.\n' +
+                '* **Mover:** mova um membro ou entre em outra call.\n' +
+                '* **Desmutar:** permita que um membro volte a falar, conforme as permissões.\n' +
+                '* **Mutar:** ferramenta exclusiva para Boosters.\n\n' +
+                '**<:pureza_q:1561108867436257343> Tempo de espera**\n' +
+                '• __Membros: 60 segundos__.\n' +
+                '• __Boosters: 40 segundos__.\n' +
+                '• __Criar call e privar call__: ~~sem espera~~.\n\n' +
+                'Utilize as ferramentas com responsabilidade! <:kxv:1561108869336530996>'
             )
             .setColor(0x2b2d31);
 
@@ -51,38 +51,32 @@ module.exports = {
                 {
                     label: 'Criar call',
                     description: 'Crie uma call',
-                    value: 'criar_call',
-                    emoji: '🔊'
+                    value: 'criar_call'
                 },
                 {
                     label: 'Privar call',
                     description: 'Controle o acesso à call',
-                    value: 'privar_call',
-                    emoji: '🔒'
+                    value: 'privar_call'
                 },
                 {
                     label: 'Quantidade',
                     description: 'Defina o limite de membros',
-                    value: 'quantidade',
-                    emoji: '👥'
+                    value: 'quantidade'
                 },
                 {
                     label: 'Mover',
                     description: 'Mova um membro entre calls',
-                    value: 'mover',
-                    emoji: '↔️'
+                    value: 'mover'
                 },
                 {
                     label: 'Desmutar',
                     description: 'Permita que alguém volte a falar',
-                    value: 'desmutar',
-                    emoji: '🎙️'
+                    value: 'desmutar'
                 },
                 {
                     label: 'Mutar (Booster)',
                     description: 'Ferramenta exclusiva para Boosters',
-                    value: 'mutar',
-                    emoji: '🔇'
+                    value: 'mutar'
                 }
             );
 
