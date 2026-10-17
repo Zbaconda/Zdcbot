@@ -6,7 +6,13 @@ const path = require('node:path');
 const {
     Client,
     Collection,
-    GatewayIntentBits
+    GatewayIntentBits,
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle,
+    ActionRowBuilder,
+    ChannelType,
+    PermissionsBitField
 } = require('discord.js');
 
 const client = new Client({
@@ -47,8 +53,94 @@ client.once('clientReady', readyClient => {
 });
 
 client.on('interactionCreate', async interaction => {
-    // Menu de cargos existente
+
+    // Formulário de limite da call
+    if (
+        interaction.isModalSubmit() &&
+        interaction.customId === 'modal_limite_call'
+    ) {
+        try {
+            const membro = await interaction.guild.members.fetch(
+                interaction.user.id
+            );
+
+            const canal = membro.voice.channel;
+
+            if (
+                !canal ||
+                ![
+                    ChannelType.GuildVoice,
+                    ChannelType.GuildStageVoice
+                ].includes(canal.type)
+            ) {
+                return interaction.reply({
+                    content: '❌ Entre em um canal de voz antes de alterar o limite.',
+                    ephemeral: true
+                });
+            }
+
+            const botMember = await interaction.guild.members.fetchMe();
+
+            if (
+                !canal.permissionsFor(botMember).has(
+                    PermissionsBitField.Flags.ManageChannels
+                )
+            ) {
+                return interaction.reply({
+                    content: '❌ Não tenho permissão para gerenciar esse canal de voz.',
+                    ephemeral: true
+                });
+            }
+
+            const valor = interaction.fields
+                .getTextInputValue('limite_pessoas')
+                .trim();
+
+            if (!/^\d+$/.test(valor)) {
+                return interaction.reply({
+                    content: '❌ Digite um número inteiro entre 0 e 99. Use 0 para remover o limite.',
+                    ephemeral: true
+                });
+            }
+
+            const limite = Number(valor);
+
+            if (limite > 99) {
+                return interaction.reply({
+                    content: '❌ O limite máximo é 99 pessoas.',
+                    ephemeral: true
+                });
+            }
+
+            await canal.setUserLimit(
+                limite,
+                `Limite alterado por ${interaction.user.tag}`
+            );
+
+            return interaction.reply({
+                content: limite === 0
+                    ? '✅ Limite da call removido com sucesso!'
+                    : `✅ Limite da call atualizado! Agora permite até **${limite} pessoa(s)**.`,
+                ephemeral: true
+            });
+
+        } catch (error) {
+            console.error('Erro ao atualizar limite:', error);
+
+            if (!interaction.replied && !interaction.deferred) {
+                await interaction.reply({
+                    content: '❌ Não consegui atualizar o limite. Verifique as permissões do bot.',
+                    ephemeral: true
+                });
+            }
+        }
+
+        return;
+    }
+
+    // Menu de cargos
     if (interaction.isStringSelectMenu()) {
+
         if (interaction.customId === 'selecionar_cargo') {
             const command = client.commands.get('cargos');
 
@@ -79,27 +171,72 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        // Menu de ferramentas de call
+        // Painel de ferramentas de call
         if (interaction.customId === 'controle_call') {
             try {
-                await interaction.reply({
+                const membro = await interaction.guild.members.fetch(
+                    interaction.user.id
+                );
+
+                if (!membro.voice.channelId) {
+                    return interaction.reply({
+                        content:
+                            '❌ Você não pode usar esta opção!\n' +
+                            'Entre em uma call antes de utilizar esta ferramenta.',
+                        ephemeral: true
+                    });
+                }
+
+                const ferramenta = interaction.values[0];
+
+                // Abrir formulário da opção Quantidade
+                if (ferramenta === 'quantidade') {
+                    const modal = new ModalBuilder()
+                        .setCustomId('modal_limite_call')
+                        .setTitle('Limite de pessoas da call');
+
+                    const campo = new TextInputBuilder()
+                        .setCustomId('limite_pessoas')
+                        .setLabel('Digite o limite (0 a 99)')
+                        .setPlaceholder('Exemplo: 5. Digite 0 para remover o limite.')
+                        .setStyle(TextInputStyle.Short)
+                        .setRequired(true)
+                        .setMinLength(1)
+                        .setMaxLength(2);
+
+                    modal.addComponents(
+                        new ActionRowBuilder().addComponents(campo)
+                    );
+
+                    return interaction.showModal(modal);
+                }
+
+                // As outras ferramentas continuam em configuração
+                return interaction.reply({
                     content:
-                        `🔧 Você selecionou **${interaction.values[0].replace(/_/g, ' ')}**.\n\n` +
+                        `🔧 Você selecionou **${ferramenta.replace(/_/g, ' ')}**.\n\n` +
                         '⚠️ Esta ferramenta ainda está sendo configurada.',
                     ephemeral: true
                 });
+
             } catch (error) {
                 console.error('Erro no painel de call:', error);
+
+                if (!interaction.replied && !interaction.deferred) {
+                    await interaction.reply({
+                        content: '❌ Não consegui verificar sua call. Tente novamente.',
+                        ephemeral: true
+                    });
+                }
             }
 
             return;
         }
     }
 
-    // Outros componentes ainda não configurados
+    // Comandos slash
     if (!interaction.isChatInputCommand()) return;
 
-    // Comandos slash
     const command = client.commands.get(interaction.commandName);
     if (!command) return;
 
