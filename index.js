@@ -3,13 +3,18 @@ require('dotenv').config();
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { Client, Collection, GatewayIntentBits } = require('discord.js');
+const {
+    Client,
+    Collection,
+    GatewayIntentBits
+} = require('discord.js');
 
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildVoiceStates
     ]
 });
 
@@ -42,40 +47,59 @@ client.once('clientReady', readyClient => {
 });
 
 client.on('interactionCreate', async interaction => {
-    // Menu de cargos
+    // Menu de cargos existente
     if (interaction.isStringSelectMenu()) {
-        if (interaction.customId !== 'selecionar_cargo') return;
+        if (interaction.customId === 'selecionar_cargo') {
+            const command = client.commands.get('cargos');
 
-        const command = client.commands.get('cargos');
-
-        if (!command || typeof command.handleSelect !== 'function') {
-            return interaction.reply({
-                content: '❌ A função de seleção não foi encontrada.',
-                ephemeral: true
-            });
-        }
-
-        try {
-            await command.handleSelect(interaction);
-        } catch (error) {
-            console.error('Erro no menu:', error);
-
-            if (interaction.deferred || interaction.replied) {
-                await interaction.editReply('❌ Ocorreu um erro ao selecionar o cargo.');
-            } else {
-                await interaction.reply({
-                    content: '❌ Ocorreu um erro ao selecionar o cargo.',
+            if (!command || typeof command.handleSelect !== 'function') {
+                return interaction.reply({
+                    content: '❌ A função de seleção não foi encontrada.',
                     ephemeral: true
                 });
             }
+
+            try {
+                await command.handleSelect(interaction);
+            } catch (error) {
+                console.error('Erro no menu de cargos:', error);
+
+                const resposta = {
+                    content: '❌ Ocorreu um erro ao selecionar o cargo.',
+                    ephemeral: true
+                };
+
+                if (interaction.deferred || interaction.replied) {
+                    await interaction.editReply(resposta);
+                } else {
+                    await interaction.reply(resposta);
+                }
+            }
+
+            return;
         }
 
-        return;
+        // Menu de ferramentas de call
+        if (interaction.customId === 'controle_call') {
+            try {
+                await interaction.reply({
+                    content:
+                        `🔧 Você selecionou **${interaction.values[0].replace(/_/g, ' ')}**.\n\n` +
+                        '⚠️ Esta ferramenta ainda está sendo configurada.',
+                    ephemeral: true
+                });
+            } catch (error) {
+                console.error('Erro no painel de call:', error);
+            }
+
+            return;
+        }
     }
 
-    // Comandos slash
+    // Outros componentes ainda não configurados
     if (!interaction.isChatInputCommand()) return;
 
+    // Comandos slash
     const command = client.commands.get(interaction.commandName);
     if (!command) return;
 
@@ -98,7 +122,7 @@ client.on('interactionCreate', async interaction => {
 });
 
 if (!process.env.DISCORD_TOKEN) {
-    console.error('❌ Token não encontrado no arquivo .env');
+    console.error('❌ Token não encontrado nas variáveis de ambiente.');
 } else {
     client.login(process.env.DISCORD_TOKEN).catch(error => {
         console.error('❌ Falha ao conectar o bot:', error.message);
