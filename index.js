@@ -1,3 +1,4 @@
+
 require('dotenv').config();
 
 const fs = require('node:fs');
@@ -14,7 +15,8 @@ const {
     ChannelType,
     PermissionFlagsBits,
     UserSelectMenuBuilder,
-    ChannelSelectMenuBuilder
+    ChannelSelectMenuBuilder,
+    ActivityType
 } = require('discord.js');
 
 const client = new Client({
@@ -29,6 +31,21 @@ const client = new Client({
 // CONFIGURAÇÕES DA ZODÍACO
 const CATEGORIA_CALL = '1560763293994323999';
 const CARGO_BOOSTER = '1559367297053757551';
+
+// ATIVIDADE AUTOMÁTICA: SÉRIES
+const SERIES = [
+    'The Mentalist 🕵️',
+    'Dexter 🔎',
+    'Sex Education 🎓',
+    'Breaking Bad 🧪',
+    'The Walking Dead 🧟',
+    'You 🖤'
+];
+
+const INTERVALO_SERIE = 10 * 60 * 60 * 1000;
+
+let indiceSerie = 0;
+let temporizadorSeries = null;
 
 const cooldowns = new Map();
 
@@ -118,8 +135,32 @@ if (fs.existsSync(commandsPath)) {
     }
 }
 
+// BOT ONLINE E ATIVIDADE AUTOMÁTICA
 client.once('clientReady', readyClient => {
     console.log(`Bot online como ${readyClient.user.tag}`);
+
+    function trocarSerie() {
+        const serieAtual = SERIES[indiceSerie];
+
+        readyClient.user.setActivity(serieAtual, {
+            type: ActivityType.Watching
+        });
+
+        console.log(
+            `Atividade atualizada: Assistindo ${serieAtual}`
+        );
+
+        indiceSerie = (indiceSerie + 1) % SERIES.length;
+    }
+
+    // Define a primeira série assim que o bot fica online.
+    trocarSerie();
+
+    // Troca de série a cada 10 horas.
+    temporizadorSeries = setInterval(
+        trocarSerie,
+        INTERVALO_SERIE
+    );
 });
 
 // MONITORAR ENTRADAS E SAÍDAS DAS CALLS
