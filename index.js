@@ -34,12 +34,12 @@ const CARGO_BOOSTER = '1559367297053757551';
 
 // ATIVIDADE AUTOMÁTICA: SÉRIES
 const SERIES = [
-    'The Mentalist 🕵️',
-    'Dexter 🔎',
-    'Sex Education 🎓',
-    'Breaking Bad 🧪',
-    'The Walking Dead 🧟',
-    'You 🖤'
+    'The Mentalist',
+    'Dexter',
+    'Sex Education',
+    'Breaking Bad',
+    'The Walking Dead',
+    'You'
 ];
 
 const INTERVALO_SERIE = 10 * 60 * 60 * 1000;
