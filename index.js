@@ -46,6 +46,10 @@ const INTERVALO_ATIVIDADE = 10 * 60 * 60 * 1000;
 const DATA_DIR = path.join(__dirname, 'data');
 const ARQUIVO_PUBLICACOES = path.join(DATA_DIR, 'publicacoes.json');
 const ARQUIVO_LIMPEZA = path.join(DATA_DIR, 'limpeza.json');
+const ARQUIVO_CALLS_TEMPORARIAS = path.join(
+    DATA_DIR,
+    'calls_temporarias.json'
+);
 
 if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -59,6 +63,7 @@ function garantirArquivo(arquivo) {
 
 garantirArquivo(ARQUIVO_PUBLICACOES);
 garantirArquivo(ARQUIVO_LIMPEZA);
+garantirArquivo(ARQUIVO_CALLS_TEMPORARIAS);
 
 // ======================================================
 // CLIENTE DISCORD
@@ -118,6 +123,35 @@ function obterPublicacoes() {
 
 function salvarPublicacoes(dados) {
     salvarJSON(ARQUIVO_PUBLICACOES, dados);
+}
+
+// ======================================================
+// REGISTRO DE CALLS TEMPORÁRIAS
+// ======================================================
+
+function obterCallsTemporarias() {
+    return lerJSON(ARQUIVO_CALLS_TEMPORARIAS);
+}
+
+function registrarCallTemporaria(canalId) {
+    const calls = obterCallsTemporarias();
+
+    calls[canalId] = true;
+
+    salvarJSON(ARQUIVO_CALLS_TEMPORARIAS, calls);
+
+    // Confirma que o registro foi salvo antes de permitir a limpeza.
+    const verificacao = obterCallsTemporarias();
+
+    return verificacao[canalId] === true;
+}
+
+function removerRegistroCall(canalId) {
+    const calls = obterCallsTemporarias();
+
+    delete calls[canalId];
+
+    salvarJSON(ARQUIVO_CALLS_TEMPORARIAS, calls);
 }
 
 // ======================================================
@@ -266,18 +300,24 @@ function estaNaCategoriaCall(canal) {
     );
 }
 
-// Reconhece calls temporárias sem exigir o prefixo "call-".
-// IMPORTANTE: todos os canais de voz nessa categoria serão reconhecidos.
+// Um canal só é temporário se tiver sido registrado
+// no momento em que o bot o criou.
+// Estar na categoria não é suficiente.
 function ehCallTemporaria(canal) {
-    return Boolean(
-        canal &&
-        canal.type === ChannelType.GuildVoice &&
-        estaNaCategoriaCall(canal)
-    );
+    if (
+        !canal ||
+        canal.type !== ChannelType.GuildVoice ||
+        !estaNaCategoriaCall(canal)
+    ) {
+        return false;
+    }
+
+    const calls = obterCallsTemporarias();
+
+    return calls[canal.id] === true;
 }
 
 // Controles comuns das calls temporárias.
-// Não existe proprietário fixo por ID.
 function podeControlarCall(interaction, canal) {
     if (!canal || !interaction.member) {
         return false;
@@ -336,6 +376,7 @@ function cancelarTemporizadorCall(canalId) {
 // ======================================================
 
 function programarExclusaoCall(canal) {
+    // Proteção principal: sem registro, não agenda exclusão.
     if (!ehCallTemporaria(canal)) return;
 
     cancelarTemporizadorCall(canal.id);
@@ -346,16 +387,19 @@ function programarExclusaoCall(canal) {
                 .fetch(canal.id)
                 .catch(() => null);
 
+            // Confere novamente o registro antes de apagar.
             if (
                 ehCallTemporaria(atual) &&
                 atual.members.size === 0
             ) {
                 await atual.delete(
-                    'Call temporária vazia há 10 segundos.'
+                    'Call temporária criada pelo bot e vazia há 10 segundos.'
                 );
 
+                removerRegistroCall(atual.id);
+
                 console.log(
-                    `🗑️ Call temporária excluída: ${atual.name}`
+                    `🗑️ Call temporária criada pelo bot e excluída: ${atual.name}`
                 );
             }
         } catch (erro) {
@@ -403,7 +447,7 @@ async function criarCallTemporaria(interaction) {
 
         const canais = await guild.channels.fetch();
 
-        // Usa somente o nome de usuário, sem "call-" e sem ID.
+        // Usa somente o nome de usuário, sem ID.
         const nomeSeguro = (
             membro.user.username || 'membro'
         )
@@ -415,7 +459,7 @@ async function criarCallTemporaria(interaction) {
             .replace(/^-|-$/g, '')
             .slice(0, 100) || 'membro';
 
-        // Evita nomes duplicados sem usar o ID do usuário.
+        // Evita nomes duplicados.
         let nome = nomeSeguro;
         let numero = 2;
 
@@ -448,6 +492,22 @@ async function criarCallTemporaria(interaction) {
             ]
         });
 
+        // Registra imediatamente o ID do canal criado pelo bot.
+        // Se não conseguir confirmar o registro, não deixa o canal
+        // sem proteção: tenta removê-lo e informa o erro.
+        const registrado = registrarCallTemporaria(canal.id);
+
+        if (!registrado) {
+            await canal.delete(
+                'Não foi possível registrar a call temporária.'
+            ).catch(() => null);
+
+            return responderErro(
+                interaction,
+                '❌ Não consegui registrar a call com segurança. Tente novamente.'
+            );
+        }
+
         await interaction.reply({
             content:
                 `✅ **Call criada com sucesso!**\n` +
@@ -473,7 +533,7 @@ async function criarCallTemporaria(interaction) {
         }
 
         console.log(
-            `🎙️ Call criada por ${membro.user.tag}: ${canal.name}`
+            `🎙️ Call temporária registrada: ${canal.name} (${canal.id})`
         );
 
         return canal;
@@ -747,7 +807,7 @@ async function publicarMensagem(mensagem) {
 }
 
 // ======================================================
-// LIMPEZA SEMANAL
+// LIMPEZA SEMANAL DE MENSAGENS
 // ======================================================
 
 async function limparCanalSemanal() {
@@ -1075,7 +1135,7 @@ client.on('interactionCreate', async interaction => {
                         .setMaxValues(1);
 
                     return interaction.reply({
-                        content: '🔇 Selecione o membro que deseja mutar.',
+                        content: '🔇 Selecione quem deseja mutar.',
                         components: [
                             new ActionRowBuilder().addComponents(seletor)
                         ],
