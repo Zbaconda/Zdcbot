@@ -231,7 +231,7 @@ function estaNaCategoriaCall(canal) {
 function podeControlarCall(interaction, canal) {
     if (!canal || !interaction.member) return false;
 
-    if (canal.topic === `call-temporaria:${interaction.user.id}`) {
+    if (canal.topic === `zdc-${interaction.user.id}`) {
         return true;
     }
 
@@ -263,10 +263,10 @@ function programarExclusaoCall(canal) {
     // Só pode excluir canais identificados como temporários.
     // Calls manuais e antigas não serão apagadas.
     if (
-        typeof canal.topic !== 'string' ||
-        !canal.topic.startsWith('call-temporaria:')
-    ) {
-        return;
+    typeof canal.topic !== 'string' ||
+    !canal.topic.startsWith('zdc-')
+) {
+    return;
     }
 
     cancelarTemporizadorCall(canal.id);
@@ -283,7 +283,7 @@ function programarExclusaoCall(canal) {
                 atual.type === ChannelType.GuildVoice &&
                 estaNaCategoriaCall(atual) &&
                 typeof atual.topic === 'string' &&
-                atual.topic.startsWith('call-temporaria:') &&
+                atual.topic.startsWith('zdc-') &&
                 atual.members.size === 0
             ) {
                 await atual.delete(
@@ -331,7 +331,7 @@ async function criarCallTemporaria(interaction) {
         canal &&
         canal.type === ChannelType.GuildVoice &&
         canal.parentId === CATEGORIA_CALL &&
-        canal.topic === `call-temporaria:${membro.id}`
+        canal.topic === `zdc-${membro.id}`
     );
 
     if (existente) {
@@ -351,7 +351,7 @@ async function criarCallTemporaria(interaction) {
             name: nome,
             type: ChannelType.GuildVoice,
             parent: CATEGORIA_CALL,
-            topic: `call-temporaria:${membro.id}`,
+            topic: `zdc-${membro.id}`,
             permissionOverwrites: [
                 {
                     id: guild.roles.everyone.id,
@@ -678,7 +678,7 @@ client.on('voiceStateUpdate', async (anterior, atual) => {
             canalAnterior.parentId === CATEGORIA_CALL &&
             canalAnterior.members.size === 0 &&
             typeof canalAnterior.topic === 'string' &&
-            canalAnterior.topic.startsWith('call-temporaria:')
+            canalAnterior.topic.startsWith('zdc-')
         ) {
             programarExclusaoCall(canalAnterior);
         }
@@ -749,9 +749,9 @@ if (interaction.isStringSelectMenu()) {
     }
 
     // PAINEL DE FERRAMENTAS DE CALL
-    if (id === 'controle_call') {
-        const opcao = interaction.values[0];
-const canal = obterCall(interaction);
+  if (id === 'controle_call') {
+    const opcao = interaction.values[0];
+    const canal = obterCall(interaction);
 
         // CRIAR CALL
         if (opcao === 'criar_call') {
@@ -902,7 +902,7 @@ const canal = obterCall(interaction);
 
         // MUTAR — EXCLUSIVO PARA BOOSTERS
         if (opcao === 'mutar') {
-            if (!membroEhBooster(interaction.member)) {
+            if (!ehBooster(interaction.member)) {
                 return responderErro(
                     interaction,
                     '❌ Este recurso é exclusivo para Boosters.'
@@ -1566,4 +1566,4 @@ if (!TOKEN) {
     client.login(TOKEN).catch(erro => {
         console.error('❌ Não foi possível conectar o bot:', erro);
     });
-        }
+    }
