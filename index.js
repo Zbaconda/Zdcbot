@@ -751,7 +751,7 @@ if (interaction.isStringSelectMenu()) {
     // PAINEL DE FERRAMENTAS DE CALL
     if (id === 'controle_call') {
         const opcao = interaction.values[0];
-        const canal = obterCanalDeVozDoMembro(interaction);
+const canal = obterCall(interaction);
 
         // CRIAR CALL
         if (opcao === 'criar_call') {
@@ -794,7 +794,7 @@ if (interaction.isStringSelectMenu()) {
 
         if (
             canal.parentId !== CATEGORIA_CALL ||
-            !verificarPermissaoGerenciarCanal(interaction, canal)
+            !podeControlarCall(interaction, canal)
         ) {
             return responderErro(
                 interaction,
@@ -1566,4 +1566,4 @@ if (!TOKEN) {
     client.login(TOKEN).catch(erro => {
         console.error('❌ Não foi possível conectar o bot:', erro);
     });
-                                    }
+        }
