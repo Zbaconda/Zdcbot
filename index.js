@@ -1,4 +1,3 @@
-
 require('dotenv').config();
 
 const fs = require('node:fs');
@@ -276,9 +275,8 @@ function ehCallTemporaria(canal) {
     );
 }
 
-// CORREÇÃO:
-// Membros dentro da própria call temporária podem controlá-la.
-// Administradores com ManageChannels também podem controlá-la.
+// Controles comuns das calls temporárias.
+// Não existe proprietário fixo por ID.
 function podeControlarCall(interaction, canal) {
     if (!canal || !interaction.member) {
         return false;
@@ -295,6 +293,33 @@ function podeControlarCall(interaction, canal) {
         interaction.memberPermissions?.has(
             PermissionFlagsBits.ManageChannels
         )
+    );
+}
+
+// CORREÇÃO: PRIVACIDADE PARA QUALQUER CALL DE VOZ.
+// Não verifica nome, categoria nem quem criou o canal.
+// Um membro pode controlar a privacidade da call em que está.
+function podeAlterarPrivacidade(interaction, canal) {
+    if (
+        !canal ||
+        ![
+            ChannelType.GuildVoice,
+            ChannelType.GuildStageVoice
+        ].includes(canal.type)
+    ) {
+        return false;
+    }
+
+    if (
+        interaction.memberPermissions?.has(
+            PermissionFlagsBits.ManageChannels
+        )
+    ) {
+        return true;
+    }
+
+    return (
+        interaction.member?.voice?.channelId === canal.id
     );
 }
 
@@ -379,7 +404,6 @@ async function criarCallTemporaria(interaction) {
 
         const canais = await guild.channels.fetch();
 
-        // Nome seguro com o nome do usuário e seu ID para evitar colisões.
         const nomeSeguro = (
             membro.displayName ||
             membro.user.globalName ||
@@ -421,32 +445,19 @@ async function criarCallTemporaria(interaction) {
                         PermissionFlagsBits.Connect,
                         PermissionFlagsBits.Speak
                     ]
-                },
-                {
-                    id: membro.id,
-                    allow: [
-                        PermissionFlagsBits.ViewChannel,
-                        PermissionFlagsBits.Connect,
-                        PermissionFlagsBits.Speak,
-                        PermissionFlagsBits.ManageChannels,
-                        PermissionFlagsBits.MoveMembers
-                    ]
                 }
             ]
         });
 
-        // A criação não depende de o membro estar em outra call.
         await interaction.reply({
             content:
                 `✅ Call criada com sucesso!\n` +
                 `🎙️ **Nome:** ${canal.name}\n` +
-                `👑 **Criador:** ${membro}\n` +
+                `👤 **Criada por:** ${membro}\n` +
                 `🔗 **Entrar:** ${canal}`,
             flags: MessageFlags.Ephemeral
         });
 
-        // Se já estiver em uma call, tenta movê-lo para a nova.
-        // Se não estiver, a call continua criada normalmente.
         if (membro.voice?.channel) {
             try {
                 await membro.voice.setChannel(canal);
@@ -458,7 +469,7 @@ async function criarCallTemporaria(interaction) {
 
                 await interaction.followUp({
                     content:
-                        '⚠️ A call foi criada, mas não consegui mover você. Você pode entrar pelo canal criado.',
+                        '⚠️ A call foi criada, mas não consegui mover você. Entre pelo canal criado.',
                     flags: MessageFlags.Ephemeral
                 }).catch(() => null);
             }
@@ -472,18 +483,66 @@ async function criarCallTemporaria(interaction) {
     } catch (erro) {
         console.error('Erro ao criar call:', erro);
 
-        if (interaction.replied || interaction.deferred) {
-            return responderErro(
-                interaction,
-                '❌ Não consegui criar a call. Confira as permissões do bot e a categoria.'
-            );
-        }
-
         return responderErro(
             interaction,
             '❌ Não consegui criar a call. Confira as permissões do bot e a categoria.'
         );
     }
+}
+
+// ======================================================
+// PRIVACIDADE DE QUALQUER CALL DE VOZ
+// ======================================================
+
+// Bloqueia o acesso geral e autoriza individualmente
+// os membros que já estão no canal.
+async function privarCall(canal) {
+    if (
+        !canal ||
+        ![
+            ChannelType.GuildVoice,
+            ChannelType.GuildStageVoice
+        ].includes(canal.type)
+    ) {
+        throw new Error('Canal de voz inválido.');
+    }
+
+    await canal.permissionOverwrites.edit(
+        canal.guild.roles.everyone.id,
+        {
+            ViewChannel: false,
+            Connect: false
+        }
+    );
+
+    for (const membro of canal.members.values()) {
+        await canal.permissionOverwrites.edit(membro.id, {
+            ViewChannel: true,
+            Connect: true,
+            Speak: true
+        });
+    }
+}
+
+// Libera o acesso geral novamente.
+async function liberarCall(canal) {
+    if (
+        !canal ||
+        ![
+            ChannelType.GuildVoice,
+            ChannelType.GuildStageVoice
+        ].includes(canal.type)
+    ) {
+        throw new Error('Canal de voz inválido.');
+    }
+
+    await canal.permissionOverwrites.edit(
+        canal.guild.roles.everyone.id,
+        {
+            ViewChannel: true,
+            Connect: true
+        }
+    );
 }
 
 // ======================================================
@@ -919,74 +978,58 @@ client.on('interactionCreate', async interaction => {
                     );
                 }
 
+                // PRIVACIDADE: TRATADA ANTES DA RESTRIÇÃO
+                // DE CALL TEMPORÁRIA. FUNCIONA EM TODAS AS CALLS.
                 if (
-                    !estaNaCategoriaCall(canal) ||
+                    opcao === 'privar_call' ||
+                    opcao === 'desprivar_call'
+                ) {
+                    if (!podeAlterarPrivacidade(interaction, canal)) {
+                        return responderErro(
+                            interaction,
+                            '❌ Você precisa estar na chamada que deseja controlar.'
+                        );
+                    }
+
+                    try {
+                        if (opcao === 'privar_call') {
+                            await privarCall(canal);
+
+                            return responderSucesso(
+                                interaction,
+                                '🔒 A chamada foi privatizada. Os membros que já estão nela continuam com acesso.'
+                            );
+                        }
+
+                        await liberarCall(canal);
+
+                        return responderSucesso(
+                            interaction,
+                            '🔓 A chamada voltou a ser pública.'
+                        );
+                    } catch (erro) {
+                        console.error(
+                            'Erro ao alterar privacidade pelo menu:',
+                            erro
+                        );
+
+                        return responderErro(
+                            interaction,
+                            '❌ Não consegui alterar a privacidade. Confira se o bot tem Gerenciar canais.'
+                        );
+                    }
+                }
+
+                // OS OUTROS CONTROLES CONTINUAM LIMITADOS
+                // ÀS CALLS TEMPORÁRIAS, COMO ANTES.
+                if (
+                    !ehCallTemporaria(canal) ||
                     !podeControlarCall(interaction, canal)
                 ) {
                     return responderErro(
                         interaction,
-                        '❌ Você não pode controlar esta chamada.'
+                        '❌ Você precisa estar dentro de uma call temporária para usar este controle.'
                     );
-                }
-
-                if (opcao === 'privar_call') {
-                    try {
-                        await canal.permissionOverwrites.edit(
-                            interaction.guild.roles.everyone.id,
-                            {
-                                ViewChannel: false,
-                                Connect: false
-                            }
-                        );
-
-                        await canal.permissionOverwrites.edit(
-                            interaction.user.id,
-                            {
-                                ViewChannel: true,
-                                Connect: true,
-                                Speak: true,
-                                ManageChannels: true,
-                                MoveMembers: true
-                            }
-                        );
-
-                        return responderSucesso(
-                            interaction,
-                            '🔒 Sua chamada agora está privada.'
-                        );
-                    } catch (erro) {
-                        console.error('Erro ao privar call:', erro);
-
-                        return responderErro(
-                            interaction,
-                            '❌ Não consegui privar a chamada.'
-                        );
-                    }
-                }
-
-                if (opcao === 'desprivar_call') {
-                    try {
-                        await canal.permissionOverwrites.edit(
-                            interaction.guild.roles.everyone.id,
-                            {
-                                ViewChannel: true,
-                                Connect: true,
-                                Speak: true
-                            }
-                        );
-
-                        return responderSucesso(
-                            interaction,
-                            '🔓 Sua chamada voltou a ser pública.'
-                        );
-                    } catch (erro) {
-                        console.error('Erro ao liberar call:', erro);
-
-                        return responderErro(
-                            interaction,
-                            '❌ Não consegui liberar a chamada.'
-                        );
-                    }
                 }
 
                 if (opcao === 'quantidade') {
@@ -1079,12 +1122,12 @@ client.on('interactionCreate', async interaction => {
 
                 if (
                     !canal ||
-                    !estaNaCategoriaCall(canal) ||
+                    !ehCallTemporaria(canal) ||
                     !podeControlarCall(interaction, canal)
                 ) {
                     return responderErro(
                         interaction,
-                        '❌ Entre em uma call que você possa controlar.'
+                        '❌ Entre em uma call temporária para usar esse controle.'
                     );
                 }
 
@@ -1113,12 +1156,12 @@ client.on('interactionCreate', async interaction => {
 
                 if (
                     !canal ||
-                    !estaNaCategoriaCall(canal) ||
+                    !ehCallTemporaria(canal) ||
                     !podeControlarCall(interaction, canal)
                 ) {
                     return responderErro(
                         interaction,
-                        '❌ Entre em uma call que você possa controlar.'
+                        '❌ Entre em uma call temporária para usar esse controle.'
                     );
                 }
 
@@ -1149,12 +1192,12 @@ client.on('interactionCreate', async interaction => {
 
                 if (
                     !canal ||
-                    !estaNaCategoriaCall(canal) ||
+                    !ehCallTemporaria(canal) ||
                     !podeControlarCall(interaction, canal)
                 ) {
                     return responderErro(
                         interaction,
-                        '❌ Entre em uma call que você possa controlar.'
+                        '❌ Entre em uma call temporária para usar esse controle.'
                     );
                 }
 
@@ -1198,47 +1241,39 @@ client.on('interactionCreate', async interaction => {
                 }
             }
 
-            // LOCK / UNLOCK
+            // PRIVAR / LIBERAR QUALQUER CALL DE VOZ
             if (id === 'call_privada' || id === 'call_publica') {
                 const canal = obterCall(interaction);
 
-                if (
-                    !canal ||
-                    !estaNaCategoriaCall(canal) ||
-                    !podeControlarCall(interaction, canal)
-                ) {
+                if (!canal) {
                     return responderErro(
                         interaction,
-                        '❌ Entre em uma call temporária para controlar a privacidade.'
+                        '❌ Entre em uma chamada primeiro.'
                     );
                 }
 
-                const publica = id === 'call_publica';
+                if (!podeAlterarPrivacidade(interaction, canal)) {
+                    return responderErro(
+                        interaction,
+                        '❌ Você precisa estar na chamada que deseja controlar.'
+                    );
+                }
 
                 try {
-                    await canal.permissionOverwrites.edit(
-                        interaction.guild.roles.everyone.id,
-                        {
-                            ViewChannel: publica,
-                            Connect: publica
-                        }
-                    );
+                    if (id === 'call_privada') {
+                        await privarCall(canal);
 
-                    // Garante que quem clicou continue podendo ver e entrar.
-                    await canal.permissionOverwrites.edit(
-                        interaction.user.id,
-                        {
-                            ViewChannel: true,
-                            Connect: true,
-                            Speak: true
-                        }
-                    );
+                        return responderSucesso(
+                            interaction,
+                            '🔒 Sua call foi privatizada. Os membros que já estão nela continuam com acesso.'
+                        );
+                    }
+
+                    await liberarCall(canal);
 
                     return responderSucesso(
                         interaction,
-                        publica
-                            ? '🔓 Sua call voltou a ser pública.'
-                            : '🔒 Sua call foi privada.'
+                        '🔓 Sua call voltou a ser pública.'
                     );
                 } catch (erro) {
                     console.error(
@@ -1413,12 +1448,12 @@ client.on('interactionCreate', async interaction => {
 
             if (
                 !canal ||
-                !estaNaCategoriaCall(canal) ||
+                !ehCallTemporaria(canal) ||
                 !podeControlarCall(interaction, canal)
             ) {
                 return responderErro(
                     interaction,
-                    '❌ Entre em uma call que você possa controlar.'
+                    '❌ Entre em uma call temporária para usar esse controle.'
                 );
             }
 
@@ -1542,12 +1577,12 @@ client.on('interactionCreate', async interaction => {
 
             if (
                 !canalAtual ||
-                !estaNaCategoriaCall(canalAtual) ||
+                !ehCallTemporaria(canalAtual) ||
                 !podeControlarCall(interaction, canalAtual)
             ) {
                 return responderErro(
                     interaction,
-                    '❌ Entre em uma call que você possa controlar.'
+                    '❌ Entre em uma call temporária para usar esse controle.'
                 );
             }
 
@@ -1615,12 +1650,12 @@ client.on('interactionCreate', async interaction => {
 
                 if (
                     !canal ||
-                    !estaNaCategoriaCall(canal) ||
+                    !ehCallTemporaria(canal) ||
                     !podeControlarCall(interaction, canal)
                 ) {
                     return responderErro(
                         interaction,
-                        '❌ Entre em uma call que você possa controlar.'
+                        '❌ Entre em uma call temporária para usar esse controle.'
                     );
                 }
 
@@ -1789,4 +1824,4 @@ if (!TOKEN) {
             erro
         );
     });
-}
+        }
