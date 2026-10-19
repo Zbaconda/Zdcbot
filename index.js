@@ -1,77 +1,246 @@
-
 require('dotenv').config();
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { randomUUID } = require('node:crypto');
+const cron = require('node-cron');
+const { createCanvas, loadImage } = require('@napi-rs/canvas');
 
 const {
     Client,
     Collection,
     GatewayIntentBits,
+    Partials,
+    ActivityType,
+    ChannelType,
+    PermissionFlagsBits,
+    EmbedBuilder,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
     ModalBuilder,
     TextInputBuilder,
     TextInputStyle,
-    ActionRowBuilder,
-    ChannelType,
-    PermissionFlagsBits,
     UserSelectMenuBuilder,
     ChannelSelectMenuBuilder,
-    ActivityType,
-    ButtonBuilder,
-    ButtonStyle,
-    EmbedBuilder,
-    AttachmentBuilder
+    StringSelectMenuBuilder,
+    REST,
+    Routes
 } = require('discord.js');
 
-const { createCanvas, loadImage } = require('@napi-rs/canvas');
-
-// ==================================================
+// ======================================================
 // CONFIGURAÇÕES
-// ==================================================
+// ======================================================
+
+const TOKEN = process.env.DISCORD_TOKEN;
+const CLIENT_ID = process.env.CLIENT_ID;
 
 const CATEGORIA_CALL = '1560763293994323999';
 const CARGO_BOOSTER = '1559367297053757551';
 
 const CANAL_PUBLICACOES_ID = '1561569037694275584';
-const CANAL_LIMPEZA_ID = '1561569037694275584';
+const CANAL_LIMPEZA_ID = '1559375230202290256';
+
 const FUSO_HORARIO = 'America/Sao_Paulo';
 
-const PASTA_DADOS = path.join(__dirname, 'data');
-const ARQUIVO_PUBLICACOES = path.join(PASTA_DADOS, 'publicacoes.json');
-const ARQUIVO_LIMPEZA = path.join(PASTA_DADOS, 'limpeza.json');
+const TEMPO_EXCLUSAO_CALL_VAZIA = 10_000;
+const INTERVALO_ATIVIDADE = 10 * 60 * 60 * 1000;
 
-if (!fs.existsSync(PASTA_DADOS)) {
-    fs.mkdirSync(PASTA_DADOS, { recursive: true });
+const DATA_DIR = path.join(__dirname, 'data');
+const ARQUIVO_PUBLICACOES = path.join(DATA_DIR, 'publicacoes.json');
+const ARQUIVO_LIMPEZA = path.join(DATA_DIR, 'limpeza.json');
+
+if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
-function lerJSON(arquivo, padrao) {
+function garantirArquivo(arquivo, conteudo = {}) {
+    if (!fs.existsSync(arquivo)) {
+        fs.writeFileSync(
+            arquivo,
+            JSON.stringify(conteudo, null, 2)
+        );
+    }
+}
+
+garantirArquivo(ARQUIVO_PUBLICACOES, {});
+garantirArquivo(ARQUIVO_LIMPEZA, {});
+
+// ======================================================
+// CLIENTE DISCORD
+// ======================================================
+
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildVoiceStates,
+        GatewayIntentBits.GuildPresences,
+        GatewayIntentBits.DirectMessages,
+        GatewayIntentBits.GuildMessageReactions
+    ],
+    partials: [
+        Partials.Channel,
+        Partials.Message,
+        Partials.User,
+        Partials.GuildMember
+    ]
+});
+
+client.commands = new Collection();
+
+// ======================================================
+// ESTADO TEMPORÁRIO
+// ======================================================
+
+const temporizadoresCall = new Map();
+const cooldowns = new Map();
+const comentariosTemporarios = new Map();
+
+// ======================================================
+// FUNÇÕES DE ARQUIVO
+// ======================================================
+
+function lerJSON(arquivo, padrao = {}) {
     try {
         if (!fs.existsSync(arquivo)) {
-            fs.writeFileSync(arquivo, JSON.stringify(padrao, null, 2));
             return padrao;
         }
 
-        return JSON.parse(fs.readFileSync(arquivo, 'utf8'));
-    } catch (error) {
-        console.error(`Erro lendo ${arquivo}:`, error);
+        return JSON.parse(
+            fs.readFileSync(arquivo, 'utf8')
+        );
+    } catch (erro) {
+        console.error(
+            `Erro ao ler ${path.basename(arquivo)}:`,
+            erro
+        );
+
         return padrao;
     }
 }
 
 function salvarJSON(arquivo, dados) {
-    const temporario = `${arquivo}.tmp`;
-
-    fs.writeFileSync(temporario, JSON.stringify(dados, null, 2));
-    fs.renameSync(temporario, arquivo);
+    try {
+        fs.writeFileSync(
+            arquivo,
+            JSON.stringify(dados, null, 2)
+        );
+    } catch (erro) {
+        console.error(
+            `Erro ao salvar ${path.basename(arquivo)}:`,
+            erro
+        );
+    }
 }
 
-let publicacoes = lerJSON(ARQUIVO_PUBLICACOES, {});
-let dadosLimpeza = lerJSON(ARQUIVO_LIMPEZA, {
-    ultimaLimpezaDomingo: ''
-});
+// ======================================================
+// CARREGAMENTO DE COMANDOS SLASH
+// ======================================================
 
-const SERIES = [
+const pastaComandos = path.join(__dirname, 'commands');
+
+if (fs.existsSync(pastaComandos)) {
+    const arquivosComandos = fs
+        .readdirSync(pastaComandos)
+        .filter(arquivo => arquivo.endsWith('.js'));
+
+    for (const arquivo of arquivosComandos) {
+        try {
+            const caminho = path.join(
+                pastaComandos,
+                arquivo
+            );
+
+            delete require.cache[require.resolve(caminho)];
+
+            const comando = require(caminho);
+
+            if (comando.data && comando.execute) {
+                client.commands.set(
+                    comando.data.name,
+                    comando
+                );
+
+                console.log(
+                    `✅ Comando carregado: ${comando.data.name}`
+                );
+            } else {
+                console.warn(
+                    `⚠️ O comando ${arquivo} não possui data ou execute.`
+                );
+            }
+        } catch (erro) {
+            console.error(
+                `Erro carregando ${arquivo}:`,
+                erro
+            );
+        }
+    }
+} else {
+    console.warn(
+        '⚠️ A pasta commands não foi encontrada.'
+    );
+}
+
+// ======================================================
+// PUBLICAÇÃO DE COMANDOS SLASH
+// ======================================================
+
+async function registrarComandos() {
+    if (!TOKEN || !CLIENT_ID) {
+        console.warn(
+            '⚠️ DISCORD_TOKEN ou CLIENT_ID não configurado. Registro de comandos ignorado.'
+        );
+
+        return;
+    }
+
+    const comandos = [];
+
+    for (const comando of client.commands.values()) {
+        comandos.push(
+            comando.data.toJSON()
+        );
+    }
+
+    if (comandos.length === 0) {
+        console.log(
+            'Nenhum comando slash encontrado para registrar.'
+        );
+
+        return;
+    }
+
+    try {
+        const rest = new REST({
+            version: '10'
+        }).setToken(TOKEN);
+
+        await rest.put(
+            Routes.applicationCommands(CLIENT_ID),
+            {
+                body: comandos
+            }
+        );
+
+        console.log(
+            `✅ ${comandos.length} comandos slash registrados.`
+        );
+    } catch (erro) {
+        console.error(
+            'Erro ao registrar comandos slash:',
+            erro
+        );
+    }
+}
+
+// ======================================================
+// ATIVIDADES DO BOT
+// ======================================================
+
+const series = [
     'The Mentalist',
     'Dexter',
     'Sex Education',
@@ -80,37 +249,29 @@ const SERIES = [
     'You'
 ];
 
-const INTERVALO_SERIE = 10 * 60 * 60 * 1000;
-
 let indiceSerie = 0;
-let temporizadorSeries = null;
 
-const cooldowns = new Map();
+function atualizarAtividade() {
+    if (!client.user) return;
 
-// ==================================================
-// CLIENTE
-// ==================================================
+    const serie = series[indiceSerie];
 
-const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildVoiceStates
-    ]
-});
+    client.user.setActivity(serie, {
+        type: ActivityType.Watching
+    });
 
-client.commands = new Collection();
+    console.log(
+        `📺 Atividade atualizada: ${serie}`
+    );
 
-// ==================================================
-// CALLS TEMPORÁRIAS
-// ==================================================
+    indiceSerie = (indiceSerie + 1) % series.length;
+}
 
-const callsTemporarias = new Set();
-const temporizadoresCall = new Map();
-const TEMPO_EXCLUSAO_CALL = 10000;
+// ======================================================
+// SISTEMA DE CHAMADAS TEMPORÁRIAS
+// ======================================================
 
-function cancelarExclusaoCall(canalId) {
+function cancelarTemporizadorCall(canalId) {
     const temporizador = temporizadoresCall.get(canalId);
 
     if (temporizador) {
@@ -119,10 +280,12 @@ function cancelarExclusaoCall(canalId) {
     }
 }
 
-function agendarExclusaoCall(canal) {
-    if (!callsTemporarias.has(canal.id)) return;
+function programarExclusaoCall(canal) {
+    if (!canal || canal.type !== ChannelType.GuildVoice) {
+        return;
+    }
 
-    cancelarExclusaoCall(canal.id);
+    cancelarTemporizadorCall(canal.id);
 
     const temporizador = setTimeout(async () => {
         try {
@@ -131,144 +294,712 @@ function agendarExclusaoCall(canal) {
                 .catch(() => null);
 
             if (!canalAtual) {
-                callsTemporarias.delete(canal.id);
+                temporizadoresCall.delete(canal.id);
                 return;
             }
 
-            if (canalAtual.members.size === 0) {
+            if (
+                canalAtual.type === ChannelType.GuildVoice &&
+                canalAtual.members.size === 0
+            ) {
                 await canalAtual.delete(
-                    'Call temporária vazia por 10 segundos'
+                    'Chamada temporária vazia.'
                 );
 
-                console.log(`Call temporária excluída: ${canalAtual.name}`);
-                callsTemporarias.delete(canal.id);
+                console.log(
+                    `🗑️ Chamada vazia excluída: ${canalAtual.name}`
+                );
             }
-        } catch (error) {
-            console.error('Erro ao excluir call:', error);
+        } catch (erro) {
+            console.error(
+                'Erro ao excluir chamada temporária:',
+                erro
+            );
         } finally {
             temporizadoresCall.delete(canal.id);
         }
-    }, TEMPO_EXCLUSAO_CALL);
+    }, TEMPO_EXCLUSAO_CALL_VAZIA);
 
-    temporizadoresCall.set(canal.id, temporizador);
+    temporizadoresCall.set(
+        canal.id,
+        temporizador
+    );
 }
 
-// ==================================================
-// CARREGAR COMANDOS SLASH
-// ==================================================
+async function criarCallTemporaria(interaction) {
+    const guild = interaction.guild;
+    const membro = interaction.member;
 
-const commandsPath = path.join(__dirname, 'commands');
-
-if (fs.existsSync(commandsPath)) {
-    const files = fs.readdirSync(commandsPath)
-        .filter(file => file.endsWith('.js'));
-
-    for (const file of files) {
-        try {
-            const command = require(path.join(commandsPath, file));
-
-            if (command.data && command.execute) {
-                client.commands.set(command.data.name, command);
-                console.log(`Comando carregado: ${command.data.name}`);
-            } else {
-                console.log(`⚠️ ${file} precisa de data e execute.`);
-            }
-        } catch (error) {
-            console.error(`Erro ao carregar ${file}:`, error);
-        }
-    }
-}
-
-// ==================================================
-// ATIVIDADE AUTOMÁTICA
-// ==================================================
-
-client.once('clientReady', readyClient => {
-    console.log(`Bot online como ${readyClient.user.tag}`);
-
-    function trocarSerie() {
-        const serieAtual = SERIES[indiceSerie];
-
-        readyClient.user.setActivity(serieAtual, {
-            type: ActivityType.Watching
+    if (!guild || !membro) {
+        return interaction.reply({
+            content: '❌ Este recurso só funciona dentro de um servidor.',
+            ephemeral: true
         });
-
-        console.log(`Atividade atualizada: Assistindo ${serieAtual}`);
-
-        indiceSerie = (indiceSerie + 1) % SERIES.length;
     }
 
-    trocarSerie();
+    const categoria = await guild.channels
+        .fetch(CATEGORIA_CALL)
+        .catch(() => null);
 
-    temporizadorSeries = setInterval(
-        trocarSerie,
-        INTERVALO_SERIE
+    if (
+        !categoria ||
+        categoria.type !== ChannelType.GuildCategory
+    ) {
+        return interaction.reply({
+            content: '❌ A categoria das chamadas não foi encontrada. Confira o ID configurado.',
+            ephemeral: true
+        });
+    }
+
+    const canalExistente = guild.channels.cache.find(canal =>
+        canal.type === ChannelType.GuildVoice &&
+        canal.parentId === CATEGORIA_CALL &&
+        canal.topic === `call-temporaria:${membro.id}`
     );
 
-    verificarHorarioLimpeza().catch(console.error);
+    if (canalExistente) {
+        return interaction.reply({
+            content: `❌ Você já possui uma chamada: ${canalExistente}`,
+            ephemeral: true
+        });
+    }
 
-    setInterval(() => {
-        verificarHorarioLimpeza().catch(console.error);
-    }, 15000);
-});
-
-// ==================================================
-// MONITORAR CALLS
-// ==================================================
-
-client.on('voiceStateUpdate', async (estadoAnterior, estadoNovo) => {
     try {
-        const canalAnterior = estadoAnterior.channel;
-        const canalNovo = estadoNovo.channel;
+        const canal = await guild.channels.create({
+            name: `call-${membro.user.username}`
+                .toLowerCase()
+                .replace(/[^a-z0-9-_]/g, '')
+                .slice(0, 90),
+            type: ChannelType.GuildVoice,
+            parent: CATEGORIA_CALL,
+            topic: `call-temporaria:${membro.id}`,
+            permissionOverwrites: [
+                {
+                    id: guild.roles.everyone.id,
+                    allow: [
+                        PermissionFlagsBits.ViewChannel,
+                        PermissionFlagsBits.Connect,
+                        PermissionFlagsBits.Speak
+                    ]
+                },
+                {
+                    id: membro.id,
+                    allow: [
+                        PermissionFlagsBits.ViewChannel,
+                        PermissionFlagsBits.Connect,
+                        PermissionFlagsBits.Speak,
+                        PermissionFlagsBits.ManageChannels,
+                        PermissionFlagsBits.MoveMembers
+                    ]
+                }
+            ]
+        });
 
-        if (canalNovo && callsTemporarias.has(canalNovo.id)) {
-            cancelarExclusaoCall(canalNovo.id);
+        await canal.setUserLimit(0);
+
+        await canal.permissionOverwrites.edit(
+            membro.id,
+            {
+                ViewChannel: true,
+                Connect: true,
+                Speak: true,
+                ManageChannels: true,
+                MoveMembers: true
+            }
+        );
+
+        await interaction.reply({
+            content: `✅ Sua chamada temporária foi criada: ${canal}`,
+            ephemeral: true
+        });
+
+        await membro.voice.setChannel(canal).catch(() => null);
+
+        return canal;
+    } catch (erro) {
+        console.error(
+            'Erro ao criar chamada temporária:',
+            erro
+        );
+
+        if (interaction.replied || interaction.deferred) {
+            return interaction.followUp({
+                content: '❌ Não consegui criar sua chamada. Verifique as permissões do bot.',
+                ephemeral: true
+            });
         }
+
+        return interaction.reply({
+            content: '❌ Não consegui criar sua chamada. Verifique as permissões do bot.',
+            ephemeral: true
+        });
+    }
+}
+
+// ======================================================
+// PAINEL DE CONTROLE DAS CHAMADAS
+// ======================================================
+
+function criarPainelCall() {
+    const embed = new EmbedBuilder()
+        .setTitle('🎙️ Controle de chamada')
+        .setDescription(
+            [
+                'Use os botões abaixo para controlar sua chamada.',
+                '',
+                '🔢 **Limite:** definir o limite de pessoas.',
+                '➡️ **Mover:** mover alguém para sua chamada.',
+                '🔇 **Mutar:** disponível para Booster.',
+                '🔊 **Desmutar:** retirar seu próprio mute de servidor.',
+                '🔒 **Privar:** restringir o acesso à chamada.',
+                '🔓 **Liberar:** permitir que todos entrem novamente.'
+            ].join('\n')
+        )
+        .setColor(0x5865F2);
+
+    const linha1 = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId('call_limite')
+            .setLabel('Limite')
+            .setEmoji('🔢')
+            .setStyle(ButtonStyle.Primary),
+
+        new ButtonBuilder()
+            .setCustomId('call_mover')
+            .setLabel('Mover')
+            .setEmoji('➡️')
+            .setStyle(ButtonStyle.Primary),
+
+        new ButtonBuilder()
+            .setCustomId('call_mutar')
+            .setLabel('Mutar')
+            .setEmoji('🔇')
+            .setStyle(ButtonStyle.Secondary),
+
+        new ButtonBuilder()
+            .setCustomId('call_desmutar')
+            .setLabel('Desmutar')
+            .setEmoji('🔊')
+            .setStyle(ButtonStyle.Secondary)
+    );
+
+    const linha2 = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId('call_privada')
+            .setLabel('Privar chamada')
+            .setEmoji('🔒')
+            .setStyle(ButtonStyle.Danger),
+
+        new ButtonBuilder()
+            .setCustomId('call_publica')
+            .setLabel('Liberar chamada')
+            .setEmoji('🔓')
+            .setStyle(ButtonStyle.Success)
+    );
+
+    return {
+        embeds: [embed],
+        components: [linha1, linha2]
+    };
+}
+
+// ======================================================
+// SISTEMA DE PUBLICAÇÕES
+// ======================================================
+
+function obterPublicacoes() {
+    return lerJSON(ARQUIVO_PUBLICACOES, {});
+}
+
+function salvarPublicacoes(dados) {
+    salvarJSON(ARQUIVO_PUBLICACOES, dados);
+}
+
+async function criarImagemPublicacao(mensagem, anexos) {
+    const canvas = createCanvas(1200, 675);
+    const ctx = canvas.getContext('2d');
+
+    const gradiente = ctx.createLinearGradient(
+        0, 0, 1200, 675
+    );
+
+    gradiente.addColorStop(0, '#171927');
+    gradiente.addColorStop(0.5, '#343b67');
+    gradiente.addColorStop(1, '#11131b');
+
+    ctx.fillStyle = gradiente;
+    ctx.fillRect(0, 0, 1200, 675);
+
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.beginPath();
+    ctx.arc(1080, 80, 230, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 40px sans-serif';
+    ctx.fillText('ZODÍACO • PUBLICAÇÕES', 55, 75);
+
+    const avatarURL = mensagem.author.displayAvatarURL({
+        extension: 'png',
+        size: 256
+    });
+
+    try {
+        const avatar = await loadImage(avatarURL);
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(95, 150, 38, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.clip();
+
+        ctx.drawImage(
+            avatar,
+            57,
+            112,
+            76,
+            76
+        );
+
+        ctx.restore();
+    } catch (erro) {
+        console.warn(
+            'Não foi possível carregar o avatar:',
+            erro.message
+        );
+    }
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 30px sans-serif';
+
+    ctx.fillText(
+        mensagem.member?.displayName ||
+        mensagem.author.username,
+        155,
+        160
+    );
+
+    ctx.fillStyle = '#d5d8e8';
+    ctx.font = '22px sans-serif';
+
+    const texto = mensagem.content?.trim() || 'Nova publicação';
+
+    const palavras = texto.split(/\s+/);
+    let linha = '';
+    let y = 250;
+    const larguraMaxima = 1080;
+
+    for (const palavra of palavras) {
+        const teste = linha
+            ? `${linha} ${palavra}`
+            : palavra;
 
         if (
-            canalAnterior &&
-            canalAnterior.id !== canalNovo?.id &&
-            callsTemporarias.has(canalAnterior.id)
+            ctx.measureText(teste).width > larguraMaxima &&
+            linha
         ) {
-            const canalAtualizado = await estadoAnterior.guild.channels
-                .fetch(canalAnterior.id)
-                .catch(() => null);
+            ctx.fillText(linha, 60, y);
+            linha = palavra;
+            y += 38;
 
-            if (
-                canalAtualizado &&
-                canalAtualizado.members.size === 0
-            ) {
-                agendarExclusaoCall(canalAtualizado);
+            if (y > 550) break;
+        } else {
+            linha = teste;
+        }
+    }
+
+    if (linha && y <= 550) {
+        ctx.fillText(linha, 60, y);
+    }
+
+    let posicaoImagem = 0;
+
+    for (const anexo of anexos) {
+        if (posicaoImagem >= 4) break;
+
+        try {
+            const imagem = await loadImage(anexo.url);
+
+            const largura = 240;
+            const altura = 150;
+            const x = 60 + posicaoImagem * 270;
+            const yImagem = 440;
+
+            ctx.save();
+
+            ctx.beginPath();
+            ctx.roundRect(
+                x,
+                yImagem,
+                largura,
+                altura,
+                15
+            );
+
+            ctx.clip();
+
+            ctx.drawImage(
+                imagem,
+                x,
+                yImagem,
+                largura,
+                altura
+            );
+
+            ctx.restore();
+
+            posicaoImagem++;
+        } catch (erro) {
+            console.warn(
+                'Não foi possível carregar um anexo:',
+                erro.message
+            );
+        }
+    }
+
+    ctx.fillStyle = '#aeb4d0';
+    ctx.font = '18px sans-serif';
+
+    ctx.fillText(
+        'Comunidade Zodíaco',
+        60,
+        640
+    );
+
+    return canvas.toBuffer('image/png');
+}
+
+function criarBotoesPublicacao(id) {
+    const linha = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId(`pub_like_${id}`)
+            .setLabel('Curtir')
+            .setEmoji('❤️')
+            .setStyle(ButtonStyle.Secondary),
+
+        new ButtonBuilder()
+            .setCustomId(`pub_comentar_${id}`)
+            .setLabel('Comentar')
+            .setEmoji('💬')
+            .setStyle(ButtonStyle.Primary),
+
+        new ButtonBuilder()
+            .setCustomId(`pub_compartilhar_${id}`)
+            .setLabel('Compartilhar')
+            .setEmoji('🔁')
+            .setStyle(ButtonStyle.Success),
+
+        new ButtonBuilder()
+            .setCustomId(`pub_detalhes_${id}`)
+            .setLabel('Detalhes')
+            .setEmoji('ℹ️')
+            .setStyle(ButtonStyle.Secondary)
+    );
+
+    return [linha];
+}
+
+async function publicarMensagem(mensagem) {
+    if (mensagem.author.bot) return;
+
+    if (mensagem.channelId !== CANAL_PUBLICACOES_ID) {
+        return;
+    }
+
+    const texto = mensagem.content?.trim() || '';
+
+    // Corrigido: attachments é uma Collection.
+    // Convertemos seus valores em array antes de usar filter e slice.
+    const imagensAnexadas = [
+        ...mensagem.attachments.values()
+    ]
+        .filter(anexo =>
+            anexo.contentType?.startsWith('image/') ||
+            /\.(png|jpe?g|gif|webp)$/i.test(
+                anexo.name || ''
+            )
+        )
+        .slice(0, 4);
+
+    if (!texto && imagensAnexadas.length === 0) {
+        return;
+    }
+
+    try {
+        const canalPublicacoes = await mensagem.guild.channels
+            .fetch(CANAL_PUBLICACOES_ID)
+            .catch(() => null);
+
+        if (!canalPublicacoes?.isTextBased()) {
+            console.error(
+                'Canal de publicações não encontrado ou inválido.'
+            );
+            return;
+        }
+
+        const imagemBuffer = await criarImagemPublicacao(
+            mensagem,
+            imagensAnexadas
+        );
+
+        const { AttachmentBuilder } = require('discord.js');
+
+        const arquivo = new AttachmentBuilder(
+            imagemBuffer,
+            {
+                name: `publicacao-${mensagem.id}.png`
+            }
+        );
+
+        const publicacoes = obterPublicacoes();
+
+        publicacoes[mensagem.id] = {
+            autorId: mensagem.author.id,
+            autorNome: mensagem.author.username,
+            guildId: mensagem.guild.id,
+            canalId: mensagem.channelId,
+            texto,
+            mensagemOriginalId: mensagem.id,
+            curtidas: [],
+            comentarios: [],
+            data: new Date().toISOString(),
+            mensagemPublicadaId: null
+        };
+
+        const embed = new EmbedBuilder()
+            .setColor(0x5865F2)
+            .setTitle('📣 Nova publicação')
+            .setDescription(
+                `Publicação de ${mensagem.author}`
+            )
+            .setImage(`attachment://publicacao-${mensagem.id}.png`)
+            .setFooter({
+                text: 'Zodíaco • Comunidade'
+            })
+            .setTimestamp();
+
+        const mensagemPublicada = await canalPublicacoes.send({
+            embeds: [embed],
+            files: [arquivo],
+            components: criarBotoesPublicacao(mensagem.id)
+        });
+
+        publicacoes[mensagem.id].mensagemPublicadaId =
+            mensagemPublicada.id;
+
+        salvarPublicacoes(publicacoes);
+
+        await mensagem.delete().catch(() => null);
+
+        console.log(
+            `📣 Publicação criada: ${mensagem.id}`
+        );
+    } catch (erro) {
+        console.error(
+            'Erro ao processar publicação:',
+            erro
+        );
+    }
+}
+
+// ======================================================
+// LIMPEZA SEMANAL DO CANAL
+// ======================================================
+
+// Canal corrigido: 1559375230202290256
+// Executa todo domingo às 00:00 no horário de Brasília.
+
+async function limparCanalSemanal() {
+    try {
+        const canal = await client.channels
+            .fetch(CANAL_LIMPEZA_ID)
+            .catch(() => null);
+
+        if (!canal || !canal.isTextBased()) {
+            console.error(
+                '❌ Canal de limpeza não encontrado ou não é textual.'
+            );
+            return;
+        }
+
+        console.log(
+            `🧹 Iniciando limpeza semanal em ${CANAL_LIMPEZA_ID}`
+        );
+
+        let totalExcluidas = 0;
+
+        while (true) {
+            const mensagens = await canal.messages
+                .fetch({ limit: 100 })
+                .catch(erro => {
+                    console.error(
+                        'Erro ao buscar mensagens para limpeza:',
+                        erro
+                    );
+
+                    return null;
+                });
+
+            if (!mensagens || mensagens.size === 0) {
+                break;
+            }
+
+            const recentes = mensagens.filter(
+                mensagem =>
+                    Date.now() - mensagem.createdTimestamp <
+                    14 * 24 * 60 * 60 * 1000
+            );
+
+            const antigas = mensagens.filter(
+                mensagem =>
+                    Date.now() - mensagem.createdTimestamp >=
+                    14 * 24 * 60 * 60 * 1000
+            );
+
+            if (recentes.size > 0) {
+                const excluidas = await canal.bulkDelete(
+                    recentes,
+                    true
+                ).catch(erro => {
+                    console.error(
+                        'Erro ao excluir mensagens recentes:',
+                        erro
+                    );
+
+                    return null;
+                });
+
+                if (excluidas) {
+                    totalExcluidas += excluidas.size;
+                }
+            }
+
+            for (const mensagem of antigas.values()) {
+                await mensagem.delete().catch(erro => {
+                    console.error(
+                        `Não foi possível excluir a mensagem ${mensagem.id}:`,
+                        erro.message
+                    );
+                });
+
+                totalExcluidas++;
+
+                // Pequena pausa entre exclusões individuais.
+                await new Promise(resolve =>
+                    setTimeout(resolve, 350)
+                );
+            }
+
+            if (mensagens.size < 100) {
+                break;
             }
         }
-    } catch (error) {
-        console.error('Erro ao monitorar calls:', error);
+
+        console.log(
+            `✅ Limpeza concluída. Mensagens excluídas: ${totalExcluidas}`
+        );
+    } catch (erro) {
+        console.error(
+            '❌ Erro durante a limpeza semanal:',
+            erro
+        );
+    }
+}
+
+// Todo domingo, às 00:00, horário de Brasília.
+cron.schedule(
+    '0 0 * * 0',
+    async () => {
+        await limparCanalSemanal();
+    },
+    {
+        timezone: FUSO_HORARIO
+    }
+);
+
+// ======================================================
+// EVENTO: BOT ONLINE
+// ======================================================
+
+client.once('clientReady', async () => {
+    console.log(
+        `✅ Bot conectado como ${client.user.tag}`
+    );
+
+    atualizarAtividade();
+
+    setInterval(
+        atualizarAtividade,
+        INTERVALO_ATIVIDADE
+    );
+
+    await registrarComandos();
+
+    console.log(
+        '🤖 Todos os sistemas principais foram iniciados.'
+    );
+});
+
+// ======================================================
+// EVENTO: ESTADO DE VOZ
+// ======================================================
+
+client.on('voiceStateUpdate', async (estadoAnterior, estadoAtual) => {
+    try {
+        const canalAnterior = estadoAnterior.channel;
+        const canalAtual = estadoAtual.channel;
+
+        // Cancelar exclusão se alguém entrar.
+        if (canalAtual) {
+            cancelarTemporizadorCall(canalAtual.id);
+        }
+
+        // Se alguém sair de uma chamada temporária, verificar se ficou vazia.
+        if (
+            canalAnterior &&
+            canalAnterior.parentId === CATEGORIA_CALL &&
+            canalAnterior.members.size === 0
+        ) {
+            programarExclusaoCall(canalAnterior);
+        }
+
+        // Se alguém entrou em uma chamada, cancelar temporizador.
+        if (
+            canalAtual &&
+            canalAtual.parentId === CATEGORIA_CALL
+        ) {
+            cancelarTemporizadorCall(canalAtual.id);
+        }
+    } catch (erro) {
+        console.error(
+            'Erro no evento de voz:',
+            erro
+        );
     }
 });
 
-// ==================================================
-// FUNÇÕES AUXILIARES EXISTENTES
-// ==================================================
+// ======================================================
+// EVENTO: NOVA MENSAGEM
+// ======================================================
 
-function estaEmVoz(membro) {
-    return Boolean(membro.voice.channel);
-}
+client.on('messageCreate', async mensagem => {
+    try {
+        if (mensagem.author.bot || !mensagem.guild) {
+            return;
+        }
 
-function eBooster(membro) {
-    return membro.roles.cache.has(CARGO_BOOSTER);
-}
-
-function tempoCooldown(membro, ferramenta) {
-    if ([
-        'criar_call',
-        'privar_call',
-        'desprivar_call'
-    ].includes(ferramenta)) {
-        return 0;
+        await publicarMensagem(mensagem);
+    } catch (erro) {
+        console.error(
+            'Erro no evento messageCreate:',
+            erro
+        );
     }
+});
 
-    return eBooster(membro) ? 40 : 60;
-}
+// ======================================================
+// FUNÇÕES AUXILIARES DE INTERAÇÃO
+// ======================================================
 
 async function responderErro(interaction, mensagem) {
     const resposta = {
@@ -277,598 +1008,566 @@ async function responderErro(interaction, mensagem) {
     };
 
     if (interaction.replied || interaction.deferred) {
-        await interaction.followUp(resposta).catch(() => {});
-    } else {
-        await interaction.reply(resposta).catch(() => {});
-    }
-}
-
-async function verificarCooldown(interaction, membro, ferramenta) {
-    const segundos = tempoCooldown(membro, ferramenta);
-
-    if (segundos === 0) return true;
-
-    const chave =
-        `${interaction.guildId}:${interaction.user.id}:${ferramenta}`;
-
-    const agora = Date.now();
-    const expiracao = cooldowns.get(chave) || 0;
-
-    if (agora < expiracao) {
-        const restante = Math.ceil((expiracao - agora) / 1000);
-
-        await responderErro(
-            interaction,
-            `⏳ Aguarde **${restante} segundo(s)** antes de usar essa ferramenta novamente.`
-        );
-
-        return false;
+        return interaction.followUp(resposta).catch(() => null);
     }
 
-    cooldowns.set(chave, agora + segundos * 1000);
-    return true;
+    return interaction.reply(resposta).catch(() => null);
 }
 
-function criarModal(id, titulo, campoId, rotulo, exemplo) {
-    const modal = new ModalBuilder()
-        .setCustomId(id)
-        .setTitle(titulo);
+function obterCanalDeVozDoMembro(interaction) {
+    const membro = interaction.member;
 
-    const campo = new TextInputBuilder()
-        .setCustomId(campoId)
-        .setLabel(rotulo)
-        .setPlaceholder(exemplo)
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true)
-        .setMaxLength(25);
-
-    modal.addComponents(
-        new ActionRowBuilder().addComponents(campo)
-    );
-
-    return modal;
-}
-
-async function buscarMembro(guild, id) {
-    if (!/^\d{17,20}$/.test(id)) return null;
-    return guild.members.fetch(id).catch(() => null);
-}
-
-async function buscarCanalVoz(guild, id) {
-    if (!/^\d{17,20}$/.test(id)) return null;
-
-    const canal = await guild.channels.fetch(id).catch(() => null);
-
-    if (
-        !canal ||
-        (
-            canal.type !== ChannelType.GuildVoice &&
-            canal.type !== ChannelType.GuildStageVoice
-        )
-    ) {
+    if (!membro?.voice?.channel) {
         return null;
     }
 
-    return canal;
+    return membro.voice.channel;
 }
 
-// ==================================================
-// SISTEMA DE PUBLICAÇÕES EM IMAGENS
-// ==================================================
+function membroEhBooster(membro) {
+    return Boolean(
+        membro?.roles?.cache?.has(CARGO_BOOSTER)
+    );
+}
 
-function quebrarTexto(ctx, texto, largura) {
-    const linhas = [];
+function verificarPermissaoGerenciarCanal(interaction, canal) {
+    if (!canal || !interaction.member) {
+        return false;
+    }
 
-    for (const paragrafo of texto.split('\n')) {
-        if (!paragrafo.trim()) {
-            linhas.push('');
-            continue;
-        }
+    const membro = interaction.member;
 
-        let linha = '';
+    if (
+        canal.topic === `call-temporaria:${membro.id}`
+    ) {
+        return true;
+    }
 
-        for (const palavra of paragrafo.split(/\s+/)) {
-            const tentativa = linha
-                ? `${linha} ${palavra}`
-                : palavra;
+    return Boolean(
+        membro.permissions?.has(
+            PermissionFlagsBits.ManageChannels
+        )
+    );
+}
 
-            if (ctx.measureText(tentativa).width > largura && linha) {
-                linhas.push(linha);
-                linha = palavra;
-            } else {
-                linha = tentativa;
+// ======================================================
+// INTERAÇÕES
+// ======================================================
+
+client.on('interactionCreate', async interaction => {
+    try {
+        // --------------------------------------------------
+        // COMANDOS SLASH
+        // --------------------------------------------------
+
+        if (interaction.isChatInputCommand()) {
+            const comando = client.commands.get(
+                interaction.commandName
+            );
+
+            if (!comando) {
+                return responderErro(
+                    interaction,
+                    '❌ Este comando não foi encontrado.'
+                );
             }
-        }
 
-        if (linha) linhas.push(linha);
-    }
+            try {
+                await comando.execute(
+                    interaction,
+                    client
+                );
+            } catch (erro) {
+                console.error(
+                    `Erro no comando /${interaction.commandName}:`,
+                    erro
+                );
 
-    return linhas;
-}
+                await responderErro(
+                    interaction,
+                    '❌ Ocorreu um erro ao executar este comando.'
+                );
+            }
 
-async function criarImagemPublicacao(mensagem) {
-    const largura = 1000;
-    const margem = 48;
-    const larguraTexto = largura - margem * 2;
-
-    const imagensAnexadas = mensagem.attachments
-        .filter(anexo =>
-            anexo.contentType?.startsWith('image/') ||
-            /\.(png|jpe?g|gif|webp)$/i.test(anexo.name || '')
-        )
-        .slice(0, 4);
-
-    const medidor = createCanvas(largura, 100);
-    const ctxMedida = medidor.getContext('2d');
-
-    ctxMedida.font = '30px sans-serif';
-
-    const texto = mensagem.content?.trim() || '';
-    const linhas = texto
-        ? quebrarTexto(ctxMedida, texto, larguraTexto)
-        : [];
-
-    const imagens = [];
-
-    for (const anexo of imagensAnexadas) {
-        try {
-            const imagem = await loadImage(anexo.url);
-            imagens.push(imagem);
-        } catch (error) {
-            console.error(
-                `Erro carregando imagem ${anexo.name}:`,
-                error.message
-            );
-        }
-    }
-
-    const alturaLinha = 42;
-    const alturaTexto = linhas.length * alturaLinha;
-
-    let alturaImagens = 0;
-
-    if (imagens.length === 1) {
-        const img = imagens[0];
-        const escala = Math.min(
-            larguraTexto / img.width,
-            560 / img.height,
-            1
-        );
-
-        alturaImagens = img.height * escala + 24;
-    } else if (imagens.length > 1) {
-        alturaImagens =
-            Math.ceil(imagens.length / 2) * 212 + 12;
-    }
-
-    const altura = Math.max(
-        340,
-        48 + 120 + alturaTexto + alturaImagens + 65 + 48
-    );
-
-    const canvas = createCanvas(largura, altura);
-    const ctx = canvas.getContext('2d');
-
-    ctx.fillStyle = '#17191f';
-    ctx.fillRect(0, 0, largura, altura);
-
-    ctx.fillStyle = '#20232b';
-    ctx.beginPath();
-    ctx.roundRect(20, 20, largura - 40, altura - 40, 28);
-    ctx.fill();
-
-    // Avatar
-    try {
-        const avatar = await loadImage(
-            mensagem.author.displayAvatarURL({
-                extension: 'png',
-                size: 128
-            })
-        );
-
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(94, 94, 34, 0, Math.PI * 2);
-        ctx.clip();
-        ctx.drawImage(avatar, 60, 60, 68, 68);
-        ctx.restore();
-    } catch {
-        ctx.fillStyle = '#5865f2';
-        ctx.beginPath();
-        ctx.arc(94, 94, 34, 0, Math.PI * 2);
-        ctx.fill();
-    }
-
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 30px sans-serif';
-
-    ctx.fillText(
-        mensagem.member?.displayName || mensagem.author.username,
-        150,
-        83,
-        700
-    );
-
-    ctx.fillStyle = '#aeb4c0';
-    ctx.font = '20px sans-serif';
-
-    const dataFormatada = new Intl.DateTimeFormat('pt-BR', {
-        timeZone: FUSO_HORARIO,
-        dateStyle: 'short',
-        timeStyle: 'short'
-    }).format(new Date(mensagem.createdTimestamp));
-
-    ctx.fillText(dataFormatada, 150, 116);
-
-    let y = 168;
-
-    ctx.fillStyle = '#f1f2f5';
-    ctx.font = '30px sans-serif';
-
-    for (const linha of linhas) {
-        ctx.fillText(linha, margem, y, larguraTexto);
-        y += alturaLinha;
-    }
-
-    if (linhas.length) y += 16;
-
-    if (imagens.length === 1) {
-        const img = imagens[0];
-
-        const escala = Math.min(
-            larguraTexto / img.width,
-            560 / img.height,
-            1
-        );
-
-        const w = img.width * escala;
-        const h = img.height * escala;
-
-        ctx.save();
-        ctx.beginPath();
-        ctx.roundRect(margem, y, w, h, 18);
-        ctx.clip();
-        ctx.drawImage(img, margem, y, w, h);
-        ctx.restore();
-    } else if (imagens.length > 1) {
-        const espacamento = 12;
-        const colunas = 2;
-        const larguraCelula = (larguraTexto - espacamento) / 2;
-        const alturaCelula = 200;
-
-        imagens.forEach((img, indice) => {
-            const coluna = indice % colunas;
-            const linha = Math.floor(indice / colunas);
-
-            const x = margem +
-                coluna * (larguraCelula + espacamento);
-
-            const posY = y +
-                linha * (alturaCelula + espacamento);
-
-            const escala = Math.max(
-                larguraCelula / img.width,
-                alturaCelula / img.height
-            );
-
-            const w = img.width * escala;
-            const h = img.height * escala;
-            const dx = x + (larguraCelula - w) / 2;
-            const dy = posY + (alturaCelula - h) / 2;
-
-            ctx.save();
-            ctx.beginPath();
-            ctx.roundRect(
-                x,
-                posY,
-                larguraCelula,
-                alturaCelula,
-                14
-            );
-            ctx.clip();
-            ctx.drawImage(img, dx, dy, w, h);
-            ctx.restore();
-        });
-    }
-
-    ctx.fillStyle = '#9299a8';
-    ctx.font = 'bold 19px sans-serif';
-    ctx.fillText('ZODÍACO • PUBLICAÇÃO', margem, altura - 48);
-
-    return canvas.toBuffer('image/png');
-}
-
-function criarBotoesPublicacao(id) {
-    const p = publicacoes[id];
-
-    return [
-        new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-                .setCustomId(`post_like:${id}`)
-                .setLabel(`❤️ ${p.likes.length}`)
-                .setStyle(ButtonStyle.Secondary),
-
-            new ButtonBuilder()
-                .setCustomId(`post_comment:${id}`)
-                .setLabel(`💬 ${p.comments.length}`)
-                .setStyle(ButtonStyle.Secondary),
-
-            new ButtonBuilder()
-                .setCustomId(`post_repost:${id}`)
-                .setLabel(`🔁 ${p.reposts}`)
-                .setStyle(ButtonStyle.Secondary),
-
-            new ButtonBuilder()
-                .setCustomId(`post_details:${id}`)
-                .setLabel('Detalhes ⋯')
-                .setStyle(ButtonStyle.Primary)
-        )
-    ];
-}
-
-async function atualizarBotoesPublicacao(id) {
-    const p = publicacoes[id];
-    if (!p) return;
-
-    const canal = await client.channels
-        .fetch(p.channelId)
-        .catch(() => null);
-
-    if (!canal?.isTextBased()) return;
-
-    const mensagem = await canal.messages
-        .fetch(p.messageId)
-        .catch(() => null);
-
-    if (!mensagem) return;
-
-    await mensagem.edit({
-        components: criarBotoesPublicacao(id)
-    });
-}
-
-// Mensagens humanas no canal configurado viram publicações.
-client.on('messageCreate', async mensagem => {
-    try {
-        if (!mensagem.guild) return;
-        if (mensagem.author.bot) return;
-        if (mensagem.channelId !== CANAL_PUBLICACOES_ID) return;
-
-        if (
-            !mensagem.content.trim() &&
-            mensagem.attachments.size === 0
-        ) {
             return;
         }
 
-        const buffer = await criarImagemPublicacao(mensagem);
-        const id = randomUUID().replace(/-/g, '').slice(0, 16);
+        // --------------------------------------------------
+        // MODAIS
+        // --------------------------------------------------
 
-        const arquivo = new AttachmentBuilder(buffer, {
-            name: `publicacao-${id}.png`
-        });
+        if (interaction.isModalSubmit()) {
+            // Limite de pessoas na chamada.
+            if (
+                interaction.customId === 'modal_limite_call'
+            ) {
+                const canal = obterCanalDeVozDoMembro(
+                    interaction
+                );
 
-        // Envia a imagem antes de apagar a mensagem original.
-        const enviada = await mensagem.channel.send({
-            files: [arquivo]
-        });
+                if (!canal) {
+                    return responderErro(
+                        interaction,
+                        '❌ Entre em uma chamada antes de usar este recurso.'
+                    );
+                }
 
-        publicacoes[id] = {
-            id,
-            authorId: mensagem.author.id,
-            authorName:
-                mensagem.member?.displayName ||
-                mensagem.author.username,
-            text: mensagem.content || '',
-            createdAt: mensagem.createdTimestamp,
-            channelId: mensagem.channelId,
-            messageId: enviada.id,
-            likes: [],
-            comments: [],
-            reposts: 0
-        };
+                if (
+                    canal.parentId !== CATEGORIA_CALL ||
+                    !verificarPermissaoGerenciarCanal(
+                        interaction,
+                        canal
+                    )
+                ) {
+                    return responderErro(
+                        interaction,
+                        '❌ Você não pode alterar o limite desta chamada.'
+                    );
+                }
 
-        salvarJSON(ARQUIVO_PUBLICACOES, publicacoes);
+                const valor = interaction.fields
+                    .getTextInputValue('limite')
+                    .trim();
 
-        await enviada.edit({
-            components: criarBotoesPublicacao(id)
-        });
+                const limite = Number(valor);
 
-        await mensagem.delete().catch(error => {
-            console.error(
-                'Publicação enviada, mas a mensagem original não foi apagada:',
-                error.message
-            );
-        });
+                if (
+                    !Number.isInteger(limite) ||
+                    limite < 0 ||
+                    limite > 99
+                ) {
+                    return responderErro(
+                        interaction,
+                        '❌ Informe um número inteiro entre 0 e 99. Use 0 para remover o limite.'
+                    );
+                }
 
-        console.log(`Publicação criada: ${id}`);
-    } catch (error) {
-        console.error('Erro no sistema de publicações:', error);
-    }
-});
+                await canal.setUserLimit(limite);
 
-// ==================================================
-// LIMPEZA AUTOMÁTICA SEMANAL
-// ==================================================
-
-function obterDataHoraBrasilia() {
-    const partes = new Intl.DateTimeFormat('en-US', {
-        timeZone: FUSO_HORARIO,
-        weekday: 'short',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        hourCycle: 'h23'
-    }).formatToParts(new Date());
-
-    const dados = {};
-
-    for (const parte of partes) {
-        dados[parte.type] = parte.value;
-    }
-
-    return dados;
-}
-
-let limpezaEmAndamento = false;
-
-async function limparCanalSemanal() {
-    const canal = await client.channels
-        .fetch(CANAL_LIMPEZA_ID)
-        .catch(() => null);
-
-    if (!canal?.isTextBased() || !canal.messages) {
-        console.error('Limpeza: canal não encontrado ou não é textual.');
-        return false;
-    }
-
-    const botMembro = await canal.guild.members.fetchMe();
-    const permissoes = canal.permissionsFor(botMembro);
-
-    if (!permissoes?.has([
-        PermissionFlagsBits.ViewChannel,
-        PermissionFlagsBits.ReadMessageHistory,
-        PermissionFlagsBits.ManageMessages
-    ])) {
-        console.error('Limpeza: faltam permissões no canal.');
-        return false;
-    }
-
-    let apagadas = 0;
-
-    try {
-        let antesDe;
-
-        while (true) {
-            const opcoes = { limit: 100 };
-
-            if (antesDe) opcoes.before = antesDe;
-
-            const mensagens = await canal.messages.fetch(opcoes);
-
-            if (mensagens.size === 0) break;
-
-            antesDe = mensagens.last().id;
-
-            const recentes = mensagens.filter(
-                msg => Date.now() - msg.createdTimestamp <
-                    14 * 24 * 60 * 60 * 1000
-            );
-
-            const antigas = mensagens.filter(
-                msg => Date.now() - msg.createdTimestamp >=
-                    14 * 24 * 60 * 60 * 1000
-            );
-
-            if (recentes.size > 0) {
-                const resultado = await canal.bulkDelete(recentes, true);
-                apagadas += resultado.size;
+                return interaction.reply({
+                    content: limite === 0
+                        ? '✅ Limite removido.'
+                        : `✅ Limite definido para ${limite} pessoas.`,
+                    ephemeral: true
+                });
             }
 
-            for (const msg of antigas.values()) {
+            // Comentário em uma publicação.
+            if (
+                interaction.customId.startsWith(
+                    'modal_comentario_'
+                )
+            ) {
+                const publicacaoId =
+                    interaction.customId.replace(
+                        'modal_comentario_',
+                        ''
+                    );
+
+                const publicacoes = obterPublicacoes();
+                const publicacao = publicacoes[publicacaoId];
+
+                if (!publicacao) {
+                    return responderErro(
+                        interaction,
+                        '❌ Esta publicação não foi encontrada.'
+                    );
+                }
+
+                const comentario = interaction.fields
+                    .getTextInputValue('comentario')
+                    .trim();
+
+                if (!comentario) {
+                    return responderErro(
+                        interaction,
+                        '❌ Escreva um comentário antes de enviar.'
+                    );
+                }
+
+                if (comentario.length > 1000) {
+                    return responderErro(
+                        interaction,
+                        '❌ O comentário pode ter no máximo 1000 caracteres.'
+                    );
+                }
+
+                if (!Array.isArray(publicacao.comentarios)) {
+                    publicacao.comentarios = [];
+                }
+
+                publicacao.comentarios.push({
+                    autorId: interaction.user.id,
+                    autorNome: interaction.user.username,
+                    texto: comentario,
+                    data: new Date().toISOString()
+                });
+
+                salvarPublicacoes(publicacoes);
+
+                return interaction.reply({
+                    content: '✅ Seu comentário foi registrado!',
+                    ephemeral: true
+                });
+            }
+
+            return;
+        }
+
+        // --------------------------------------------------
+        // BOTÕES
+        // --------------------------------------------------
+
+        if (interaction.isButton()) {
+            const id = interaction.customId;
+
+            // Criar chamada temporária.
+            if (id === 'criar_call') {
+                return criarCallTemporaria(interaction);
+            }
+
+            // Abrir painel de controle da call.
+            if (id === 'abrir_controle_call') {
+                return interaction.reply({
+                    ...criarPainelCall(),
+                    ephemeral: true
+                });
+            }
+
+            // Limite da chamada.
+            if (id === 'call_limite') {
+                const canal = obterCanalDeVozDoMembro(
+                    interaction
+                );
+
+                if (!canal) {
+                    return responderErro(
+                        interaction,
+                        '❌ Entre em uma chamada antes de alterar o limite.'
+                    );
+                }
+
+                if (
+                    canal.parentId !== CATEGORIA_CALL ||
+                    !verificarPermissaoGerenciarCanal(
+                        interaction,
+                        canal
+                    )
+                ) {
+                    return responderErro(
+                        interaction,
+                        '❌ Você não tem permissão para controlar esta chamada.'
+                    );
+                }
+
+                const modal = new ModalBuilder()
+                    .setCustomId('modal_limite_call')
+                    .setTitle('Limite da chamada');
+
+                const campo = new TextInputBuilder()
+                    .setCustomId('limite')
+                    .setLabel('Limite de pessoas (0 a 99)')
+                    .setPlaceholder('Digite 0 para remover o limite')
+                    .setStyle(TextInputStyle.Short)
+                    .setRequired(true)
+                    .setMinLength(1)
+                    .setMaxLength(2);
+
+                modal.addComponents(
+                    new ActionRowBuilder().addComponents(campo)
+                );
+
+                return interaction.showModal(modal);
+            }
+
+            // Mover um membro.
+            if (id === 'call_mover') {
+                const canal = obterCanalDeVozDoMembro(
+                    interaction
+                );
+
+                if (!canal) {
+                    return responderErro(
+                        interaction,
+                        '❌ Você precisa estar em uma chamada para mover alguém.'
+                    );
+                }
+
+                if (
+                    canal.parentId !== CATEGORIA_CALL ||
+                    !verificarPermissaoGerenciarCanal(
+                        interaction,
+                        canal
+                    )
+                ) {
+                    return responderErro(
+                        interaction,
+                        '❌ Você não pode controlar esta chamada.'
+                    );
+                }
+
+                const seletor = new UserSelectMenuBuilder()
+                    .setCustomId('call_selecionar_membro')
+                    .setPlaceholder('Escolha quem deseja mover')
+                    .setMinValues(1)
+                    .setMaxValues(1);
+
+                return interaction.reply({
+                    content: '➡️ Selecione o membro que deseja mover para sua chamada.',
+                    components: [
+                        new ActionRowBuilder().addComponents(seletor)
+                    ],
+                    ephemeral: true
+                });
+            }
+
+            // Mutar membro: somente Booster.
+            if (id === 'call_mutar') {
+                const membro = interaction.member;
+
+                if (!membroEhBooster(membro)) {
+                    return responderErro(
+                        interaction,
+                        '❌ Este recurso é exclusivo para Boosters do servidor.'
+                    );
+                }
+
+                const canal = obterCanalDeVozDoMembro(
+                    interaction
+                );
+
+                if (!canal) {
+                    return responderErro(
+                        interaction,
+                        '❌ Entre em uma chamada primeiro.'
+                    );
+                }
+
+                if (
+                    canal.parentId !== CATEGORIA_CALL ||
+                    !verificarPermissaoGerenciarCanal(
+                        interaction,
+                        canal
+                    )
+                ) {
+                    return responderErro(
+                        interaction,
+                        '❌ Você não pode controlar esta chamada.'
+                    );
+                }
+
+                const seletor = new UserSelectMenuBuilder()
+                    .setCustomId('call_selecionar_mutar')
+                    .setPlaceholder('Escolha quem deseja mutar')
+                    .setMinValues(1)
+                    .setMaxValues(1);
+
+                return interaction.reply({
+                    content: '🔇 Selecione um membro da chamada.',
+                    components: [
+                        new ActionRowBuilder().addComponents(seletor)
+                    ],
+                    ephemeral: true
+                });
+            }
+
+            // Desmutar a si mesmo.
+            if (id === 'call_desmutar') {
+                const membro = interaction.member;
+
+                if (!membro?.voice?.channel) {
+                    return responderErro(
+                        interaction,
+                        '❌ Entre em uma chamada primeiro.'
+                    );
+                }
+
                 try {
-                    await msg.delete();
-                    apagadas++;
-                } catch (error) {
+                    await membro.voice.setMute(false);
+
+                    return interaction.reply({
+                        content: '🔊 Seu mute de servidor foi removido.',
+                        ephemeral: true
+                    });
+                } catch (erro) {
                     console.error(
-                        'Erro apagando mensagem antiga:',
-                        error.message
+                        'Erro ao desmutar membro:',
+                        erro
+                    );
+
+                    return responderErro(
+                        interaction,
+                        '❌ Não consegui retirar seu mute. Verifique as permissões do bot.'
                     );
                 }
             }
 
-            if (mensagens.size < 100) break;
-        }
-
-        console.log(`Limpeza concluída: ${apagadas} mensagens apagadas.`);
-        return true;
-    } catch (error) {
-        console.error('Erro na limpeza semanal:', error);
-        return false;
-    }
-}
-
-async function verificarHorarioLimpeza() {
-    if (limpezaEmAndamento) return;
-
-    const agora = obterDataHoraBrasilia();
-
-    if (
-        agora.weekday !== 'Sun' ||
-        agora.hour !== '00' ||
-        agora.minute !== '00'
-    ) {
-        return;
-    }
-
-    const dataAtual = `${agora.year}-${agora.month}-${agora.day}`;
-
-    if (dadosLimpeza.ultimaLimpezaDomingo === dataAtual) return;
-
-    limpezaEmAndamento = true;
-
-    try {
-        const sucesso = await limparCanalSemanal();
-
-        if (sucesso) {
-            dadosLimpeza.ultimaLimpezaDomingo = dataAtual;
-            salvarJSON(ARQUIVO_LIMPEZA, dadosLimpeza);
-        }
-    } finally {
-        limpezaEmAndamento = false;
-    }
-}
-
-// ==================================================
-// EVENTOS DE INTERAÇÃO
-// ==================================================
-
-client.on('interactionCreate', async interaction => {
-    try {
-        if (!interaction.inGuild()) return;
-
-        // BOTÕES DAS PUBLICAÇÕES
-        if (interaction.isButton()) {
-            const [acao, id] = interaction.customId.split(':');
-
-            if (!acao.startsWith('post_')) return;
-
-            const p = publicacoes[id];
-
-            if (!p) {
-                return responderErro(
-                    interaction,
-                    '❌ Esta publicação não foi encontrada.'
+            // Tornar chamada privada.
+            if (id === 'call_privada') {
+                const canal = obterCanalDeVozDoMembro(
+                    interaction
                 );
-            }
 
-            if (acao === 'post_like') {
-                const indice = p.likes.indexOf(interaction.user.id);
-
-                if (indice >= 0) {
-                    p.likes.splice(indice, 1);
-                } else {
-                    p.likes.push(interaction.user.id);
+                if (!canal) {
+                    return responderErro(
+                        interaction,
+                        '❌ Entre em uma chamada primeiro.'
+                    );
                 }
 
-                salvarJSON(ARQUIVO_PUBLICACOES, publicacoes);
+                if (
+                    canal.parentId !== CATEGORIA_CALL ||
+                    !verificarPermissaoGerenciarCanal(
+                        interaction,
+                        canal
+                    )
+                ) {
+                    return responderErro(
+                        interaction,
+                        '❌ Você não pode alterar a privacidade desta chamada.'
+                    );
+                }
 
-                await interaction.deferUpdate();
-                await atualizarBotoesPublicacao(id);
-                return;
+                await canal.permissionOverwrites.edit(
+                    interaction.guild.roles.everyone.id,
+                    {
+                        ViewChannel: false,
+                        Connect: false
+                    }
+                );
+
+                await canal.permissionOverwrites.edit(
+                    interaction.user.id,
+                    {
+                        ViewChannel: true,
+                        Connect: true,
+                        Speak: true,
+                        ManageChannels: true,
+                        MoveMembers: true
+                    }
+                );
+
+                return interaction.reply({
+                    content: '🔒 Sua chamada agora está privada.',
+                    ephemeral: true
+                });
             }
 
-            if (acao === 'post_comment') {
+            // Tornar chamada pública.
+            if (id === 'call_publica') {
+                const canal = obterCanalDeVozDoMembro(
+                    interaction
+                );
+
+                if (!canal) {
+                    return responderErro(
+                        interaction,
+                        '❌ Entre em uma chamada primeiro.'
+                    );
+                }
+
+                if (
+                    canal.parentId !== CATEGORIA_CALL ||
+                    !verificarPermissaoGerenciarCanal(
+                        interaction,
+                        canal
+                    )
+                ) {
+                    return responderErro(
+                        interaction,
+                        '❌ Você não pode alterar a privacidade desta chamada.'
+                    );
+                }
+
+                await canal.permissionOverwrites.edit(
+                    interaction.guild.roles.everyone.id,
+                    {
+                        ViewChannel: true,
+                        Connect: true,
+                        Speak: true
+                    }
+                );
+
+                return interaction.reply({
+                    content: '🔓 Sua chamada voltou a ser pública.',
+                    ephemeral: true
+                });
+            }
+
+            // Curtidas em publicações.
+            if (id.startsWith('pub_like_')) {
+                const publicacaoId = id.replace(
+                    'pub_like_',
+                    ''
+                );
+
+                const publicacoes = obterPublicacoes();
+                const publicacao = publicacoes[publicacaoId];
+
+                if (!publicacao) {
+                    return responderErro(
+                        interaction,
+                        '❌ Esta publicação não foi encontrada.'
+                    );
+                }
+
+                if (!Array.isArray(publicacao.curtidas)) {
+                    publicacao.curtidas = [];
+                }
+
+                const indice = publicacao.curtidas.indexOf(
+                    interaction.user.id
+                );
+
+                if (indice >= 0) {
+                    publicacao.curtidas.splice(indice, 1);
+
+                    salvarPublicacoes(publicacoes);
+
+                    return interaction.reply({
+                        content: '❤️ Você removeu sua curtida.',
+                        ephemeral: true
+                    });
+                }
+
+                publicacao.curtidas.push(
+                    interaction.user.id
+                );
+
+                salvarPublicacoes(publicacoes);
+
+                return interaction.reply({
+                    content: `❤️ Você curtiu a publicação! Total de curtidas: ${publicacao.curtidas.length}`,
+                    ephemeral: true
+                });
+            }
+
+            // Abrir formulário de comentário.
+            if (id.startsWith('pub_comentar_')) {
+                const publicacaoId = id.replace(
+                    'pub_comentar_',
+                    ''
+                );
+
+                const publicacoes = obterPublicacoes();
+
+                if (!publicacoes[publicacaoId]) {
+                    return responderErro(
+                        interaction,
+                        '❌ Esta publicação não foi encontrada.'
+                    );
+                }
+
                 const modal = new ModalBuilder()
-                    .setCustomId(`post_comment_submit:${id}`)
+                    .setCustomId(
+                        `modal_comentario_${publicacaoId}`
+                    )
                     .setTitle('Comentar publicação');
 
                 const campo = new TextInputBuilder()
-                    .setCustomId('post_comment_text')
-                    .setLabel('Seu comentário')
-                    .setPlaceholder('Escreva seu comentário...')
+                    .setCustomId('comentario')
+                    .setLabel('Escreva seu comentário')
+                    .setPlaceholder('Digite seu comentário aqui...')
                     .setStyle(TextInputStyle.Paragraph)
                     .setRequired(true)
                     .setMaxLength(1000);
@@ -880,61 +1579,90 @@ client.on('interactionCreate', async interaction => {
                 return interaction.showModal(modal);
             }
 
-            if (acao === 'post_repost') {
-                const canal = await client.channels
-                    .fetch(p.channelId)
-                    .catch(() => null);
+            // Compartilhar publicação.
+            if (id.startsWith('pub_compartilhar_')) {
+                const publicacaoId = id.replace(
+                    'pub_compartilhar_',
+                    ''
+                );
 
-                if (!canal?.isTextBased()) {
+                const publicacoes = obterPublicacoes();
+                const publicacao = publicacoes[publicacaoId];
+
+                if (!publicacao) {
                     return responderErro(
                         interaction,
-                        '❌ Não encontrei o canal da publicação.'
+                        '❌ Esta publicação não foi encontrada.'
                     );
                 }
 
-                const original = await canal.messages
-                    .fetch(p.messageId)
-                    .catch(() => null);
+                const mensagemId =
+                    publicacao.mensagemPublicadaId;
 
-                const imagem = original?.attachments.first();
+                const link = mensagemId
+                    ? `https://discord.com/channels/${publicacao.guildId}/${publicacao.canalId}/${mensagemId}`
+                    : null;
 
-                if (!imagem) {
-                    return responderErro(
-                        interaction,
-                        '❌ Não encontrei a imagem para repostar.'
-                    );
-                }
-
-                await canal.send({
-                    content:
-                        `🔁 **Repostagem da publicação de <@${p.authorId}>**\n` +
-                        `Repostada por ${interaction.user}`,
-                    embeds: [
-                        new EmbedBuilder()
-                            .setColor(0x5865F2)
-                            .setImage(imagem.url)
-                            .setFooter({ text: `Publicação ${id}` })
-                    ]
+                return interaction.reply({
+                    content: link
+                        ? `🔁 Compartilhe esta publicação:\n${link}`
+                        : '❌ Não foi possível gerar o link da publicação.',
+                    ephemeral: true
                 });
-
-                p.reposts++;
-                salvarJSON(ARQUIVO_PUBLICACOES, publicacoes);
-
-                await interaction.deferUpdate();
-                await atualizarBotoesPublicacao(id);
-                return;
             }
 
-            if (acao === 'post_details') {
+            // Detalhes da publicação.
+            if (id.startsWith('pub_detalhes_')) {
+                const publicacaoId = id.replace(
+                    'pub_detalhes_',
+                    ''
+                );
+
+                const publicacoes = obterPublicacoes();
+                const publicacao = publicacoes[publicacaoId];
+
+                if (!publicacao) {
+                    return responderErro(
+                        interaction,
+                        '❌ Esta publicação não foi encontrada.'
+                    );
+                }
+
                 const embed = new EmbedBuilder()
+                    .setTitle('ℹ️ Detalhes da publicação')
                     .setColor(0x5865F2)
-                    .setTitle('Detalhes da publicação')
-                    .setDescription(
-                        `**Autor:** <@${p.authorId}>\n` +
-                        `**Curtidas:** ${p.likes.length}\n` +
-                        `**Comentários:** ${p.comments.length}\n` +
-                        `**Repostagens:** ${p.reposts}\n` +
-                        `**Publicado em:** <t:${Math.floor(p.createdAt / 1000)}:F>`
+                    .addFields(
+                        {
+                            name: 'Autor',
+                            value: `<@${publicacao.autorId}>`,
+                            inline: true
+                        },
+                        {
+                            name: 'Curtidas',
+                            value: String(
+                                publicacao.curtidas?.length || 0
+                            ),
+                            inline: true
+                        },
+                        {
+                            name: 'Comentários',
+                            value: String(
+                                publicacao.comentarios?.length || 0
+                            ),
+                            inline: true
+                        },
+                        {
+                            name: 'Publicado em',
+                            value: `<t:${Math.floor(
+                                new Date(publicacao.data).getTime() / 1000
+                            )}:F>`
+                        },
+                        {
+                            name: 'Texto',
+                            value: publicacao.texto
+                                ? publicacao.texto.slice(0, 1024)
+                                : 'Sem texto.'
+                        }
                     );
 
                 return interaction.reply({
@@ -946,607 +1674,192 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        // RECEBER COMENTÁRIOS ANTES DAS VALIDAÇÕES DE CALL
-        if (
-            interaction.isModalSubmit() &&
-            interaction.customId.startsWith('post_comment_submit:')
-        ) {
-            const id = interaction.customId.split(':')[1];
-            const p = publicacoes[id];
+        // --------------------------------------------------
+        // SELETORES DE MEMBROS
+        // --------------------------------------------------
 
-            if (!p) {
-                return responderErro(
-                    interaction,
-                    '❌ Esta publicação não foi encontrada.'
-                );
-            }
+        if (interaction.isUserSelectMenu()) {
+            const id = interaction.customId;
 
-            const texto = interaction.fields
-                .getTextInputValue('post_comment_text')
-                .trim();
-
-            if (!texto) {
-                return responderErro(
-                    interaction,
-                    '❌ O comentário não pode ficar vazio.'
-                );
-            }
-
-            p.comments.push({
-                userId: interaction.user.id,
-                text: texto,
-                createdAt: Date.now()
-            });
-
-            salvarJSON(ARQUIVO_PUBLICACOES, publicacoes);
-
-            await interaction.reply({
-                content: '✅ Seu comentário foi registrado!',
-                ephemeral: true
-            });
-
-            await atualizarBotoesPublicacao(id);
-            return;
-        }
-
-        // SELECIONAR MEMBRO PARA MOVER
-        if (
-            interaction.isUserSelectMenu() &&
-            interaction.customId === 'mover_membro'
-        ) {
-            const membro = await interaction.guild.members.fetch(
-                interaction.user.id
-            );
-
-            if (!estaEmVoz(membro)) {
-                return interaction.update({
-                    content: '❌ Entre em uma call antes de usar esta ferramenta.',
-                    components: []
-                });
-            }
-
-            const alvo = await buscarMembro(
-                interaction.guild,
-                interaction.values[0]
-            );
-
-            if (!alvo) {
-                return interaction.update({
-                    content: '❌ Não encontrei esse membro no servidor.',
-                    components: []
-                });
-            }
-
-            if (alvo.id === interaction.user.id) {
-                return interaction.update({
-                    content: '❌ Selecione outro membro para mover.',
-                    components: []
-                });
-            }
-
-            if (!estaEmVoz(alvo)) {
-                return interaction.update({
-                    content: '❌ Esse membro não está conectado a uma call.',
-                    components: []
-                });
-            }
-
-            const seletorCanal = new ChannelSelectMenuBuilder()
-                .setCustomId(`mover_canal:${alvo.id}`)
-                .setPlaceholder('Escolha a call de destino')
-                .setChannelTypes(
-                    ChannelType.GuildVoice,
-                    ChannelType.GuildStageVoice
-                )
-                .setMinValues(1)
-                .setMaxValues(1);
-
-            return interaction.update({
-                content:
-                    `👤 Membro selecionado: **${alvo.user.username}**\n\n` +
-                    '🔊 Agora escolha a call de destino:',
-                components: [
-                    new ActionRowBuilder().addComponents(seletorCanal)
-                ]
-            });
-        }
-
-        // ESCOLHER CANAL DE DESTINO
-        if (
-            interaction.isChannelSelectMenu() &&
-            interaction.customId.startsWith('mover_canal:')
-        ) {
-            const membro = await interaction.guild.members.fetch(
-                interaction.user.id
-            );
-
-            if (!estaEmVoz(membro)) {
-                return interaction.update({
-                    content: '❌ Você precisa estar em uma call para usar esta ferramenta.',
-                    components: []
-                });
-            }
-
-            const alvoId = interaction.customId.split(':')[1];
-            const alvo = await buscarMembro(interaction.guild, alvoId);
-
-            if (!alvo || !estaEmVoz(alvo)) {
-                return interaction.update({
-                    content: '❌ Esse membro não está mais conectado a uma call.',
-                    components: []
-                });
-            }
-
-            const destino = await buscarCanalVoz(
-                interaction.guild,
-                interaction.values[0]
-            );
-
-            if (!destino) {
-                return interaction.update({
-                    content: '❌ O canal selecionado não é uma call válida.',
-                    components: []
-                });
-            }
-
-            if (alvo.voice.channelId === destino.id) {
-                return interaction.update({
-                    content: 'ℹ️ Esse membro já está nessa call.',
-                    components: []
-                });
-            }
-
-            const botMembro = await interaction.guild.members.fetchMe();
-
-            if (!botMembro.permissions.has(PermissionFlagsBits.MoveMembers)) {
-                return interaction.update({
-                    content: '❌ Preciso da permissão Mover membros.',
-                    components: []
-                });
-            }
-
-            if (!destino.permissionsFor(botMembro)
-                ?.has(PermissionFlagsBits.Connect)) {
-                return interaction.update({
-                    content: '❌ Não tenho permissão para entrar na call de destino.',
-                    components: []
-                });
-            }
-
-            if (!await verificarCooldown(interaction, membro, 'mover')) {
-                return;
-            }
-
-            try {
-                await alvo.voice.setChannel(destino);
-
-                return interaction.update({
-                    content: '✅ Usuário movido para a call com sucesso!',
-                    components: []
-                });
-            } catch (error) {
-                console.error('Erro ao mover membro:', error);
-
-                return interaction.update({
-                    content: '❌ Não consegui mover esse membro. Confira as permissões e a hierarquia do bot.',
-                    components: []
-                });
-            }
-        }
-
-        // FORMULÁRIOS DE CALL
-        if (interaction.isModalSubmit()) {
-            const membro = await interaction.guild.members.fetch(
-                interaction.user.id
-            );
-
-            if (!estaEmVoz(membro)) {
-                return responderErro(
-                    interaction,
-                    '❌ Entre em uma call antes de utilizar esta ferramenta.'
-                );
-            }
-
-            const canalAtual = membro.voice.channel;
-
-            if (interaction.customId === 'modal_limite_call') {
-                const valor = interaction.fields
-                    .getTextInputValue('limite_pessoas')
-                    .trim();
-
-                if (!/^\d{1,2}$/.test(valor) || Number(valor) > 99) {
-                    return responderErro(
-                        interaction,
-                        '❌ Digite um número entre 0 e 99.'
-                    );
-                }
-
-                const botMembro = await interaction.guild.members.fetchMe();
-
-                if (!canalAtual.permissionsFor(botMembro)
-                    ?.has(PermissionFlagsBits.ManageChannels)) {
-                    return responderErro(
-                        interaction,
-                        '❌ Preciso da permissão Gerenciar canais.'
-                    );
-                }
-
-                if (!await verificarCooldown(
-                    interaction,
-                    membro,
-                    'quantidade'
-                )) {
-                    return;
-                }
-
-                const limite = Number(valor);
-                await canalAtual.setUserLimit(limite);
-
-                return interaction.reply({
-                    content: limite === 0
-                        ? '✅ Limite da call removido com sucesso!'
-                        : `✅ Limite da call atualizado para **${limite} pessoa(s)**!`,
-                    ephemeral: true
-                });
-            }
-
-            if (interaction.customId === 'modal_mutar_membro') {
-                if (!eBooster(membro)) {
-                    return responderErro(
-                        interaction,
-                        '❌ A opção Mutar é exclusiva para Boosters.'
-                    );
-                }
-
-                const idMembro = interaction.fields
-                    .getTextInputValue('id_membro')
-                    .trim();
-
-                const alvo = await buscarMembro(
-                    interaction.guild,
-                    idMembro
+            if (
+                id === 'call_selecionar_membro' ||
+                id === 'call_selecionar_mutar'
+            ) {
+                const canal = obterCanalDeVozDoMembro(
+                    interaction
                 );
 
-                if (!alvo || !estaEmVoz(alvo)) {
+                if (!canal) {
                     return responderErro(
                         interaction,
-                        '❌ Não encontrei esse membro em uma call.'
+                        '❌ Você saiu da chamada. Entre novamente e tente outra vez.'
                     );
                 }
 
-                if (alvo.voice.serverMute) {
+                if (
+                    canal.parentId !== CATEGORIA_CALL ||
+                    !verificarPermissaoGerenciarCanal(
+                        interaction,
+                        canal
+                    )
+                ) {
                     return responderErro(
                         interaction,
-                        'ℹ️ Esse membro já está mutado pelo servidor.'
+                        '❌ Você não pode controlar esta chamada.'
                     );
                 }
 
-                const botMembro = await interaction.guild.members.fetchMe();
+                const membroId = interaction.values[0];
 
-                if (!botMembro.permissions.has(PermissionFlagsBits.MuteMembers)) {
+                const membroAlvo = await interaction.guild.members
+                    .fetch(membroId)
+                    .catch(() => null);
+
+                if (!membroAlvo) {
                     return responderErro(
                         interaction,
-                        '❌ Preciso da permissão Silenciar membros.'
+                        '❌ Não consegui encontrar esse membro.'
                     );
                 }
 
-                if (!await verificarCooldown(interaction, membro, 'mutar')) {
-                    return;
+                if (id === 'call_selecionar_membro') {
+                    if (!membroAlvo.voice.channel) {
+                        return responderErro(
+                            interaction,
+                            '❌ Esse membro não está em uma chamada de voz.'
+                        );
+                    }
+
+                    try {
+                        await membroAlvo.voice.setChannel(canal);
+
+                        return interaction.update({
+                            content: `✅ ${membroAlvo} foi movido para ${canal}.`,
+                            components: []
+                        });
+                    } catch (erro) {
+                        console.error(
+                            'Erro ao mover membro:',
+                            erro
+                        );
+
+                        return responderErro(
+                            interaction,
+                            '❌ Não consegui mover esse membro. Confira as permissões do bot.'
+                        );
+                    }
                 }
 
-                await alvo.voice.setMute(true);
+                if (id === 'call_selecionar_mutar') {
+                    if (!membroEhBooster(interaction.member)) {
+                        return responderErro(
+                            interaction,
+                            '❌ Este recurso é exclusivo para Boosters.'
+                        );
+                    }
 
-                return interaction.reply({
-                    content: '✅ Usuário mutado com sucesso!',
-                    ephemeral: true
-                });
+                    if (membroAlvo.id === interaction.user.id) {
+                        return responderErro(
+                            interaction,
+                            '❌ Use o controle de desmutar para controlar seu próprio mute.'
+                        );
+                    }
+
+                    if (membroAlvo.voice.channelId !== canal.id) {
+                        return responderErro(
+                            interaction,
+                            '❌ Esse membro não está na sua chamada.'
+                        );
+                    }
+
+                    try {
+                        await membroAlvo.voice.setMute(true);
+
+                        return interaction.update({
+                            content: `🔇 ${membroAlvo} foi mutado no servidor.`,
+                            components: []
+                        });
+                    } catch (erro) {
+                        console.error(
+                            'Erro ao mutar membro:',
+                            erro
+                        );
+
+                        return responderErro(
+                            interaction,
+                            '❌ Não consegui mutar esse membro. Confira as permissões do bot.'
+                        );
+                    }
+                }
             }
 
             return;
         }
 
-        // MENU DE CARGOS
-        if (interaction.isStringSelectMenu()) {
-            if (interaction.customId === 'selecionar_cargo') {
-                const comando = client.commands.get('cargos');
+        // --------------------------------------------------
+        // SELETORES DE CANAIS
+        // --------------------------------------------------
 
-                if (!comando ||
-                    typeof comando.handleSelect !== 'function') {
-                    return responderErro(
-                        interaction,
-                        '❌ A função de seleção de cargos não foi encontrada.'
-                    );
-                }
+        if (interaction.isChannelSelectMenu()) {
+            const canalDestinoId = interaction.values[0];
 
-                await comando.handleSelect(interaction);
-                return;
-            }
+            const canalDestino = await interaction.guild.channels
+                .fetch(canalDestinoId)
+                .catch(() => null);
 
-            // PAINEL DE CALL
-            if (interaction.customId === 'controle_call') {
-                const ferramenta = interaction.values[0];
-
-                const membro = await interaction.guild.members.fetch(
-                    interaction.user.id
+            if (!canalDestino) {
+                return responderErro(
+                    interaction,
+                    '❌ Não consegui encontrar o canal selecionado.'
                 );
-
-                // CRIAR CALL
-                if (ferramenta === 'criar_call') {
-                    const categoria = await interaction.guild.channels
-                        .fetch(CATEGORIA_CALL)
-                        .catch(() => null);
-
-                    if (!categoria ||
-                        categoria.type !== ChannelType.GuildCategory) {
-                        return responderErro(
-                            interaction,
-                            '❌ A categoria configurada não foi encontrada. Verifique o ID.'
-                        );
-                    }
-
-                    const botMembro = await interaction.guild.members.fetchMe();
-
-                    if (!botMembro.permissions.has(
-                        PermissionFlagsBits.ManageChannels
-                    )) {
-                        return responderErro(
-                            interaction,
-                            '❌ Preciso da permissão Gerenciar canais.'
-                        );
-                    }
-
-                    if (!await verificarCooldown(
-                        interaction,
-                        membro,
-                        'criar_call'
-                    )) {
-                        return;
-                    }
-
-                    const nome = (
-                        membro.nickname || interaction.user.username
-                    ).trim().slice(0, 100) || 'Nova call';
-
-                    const novoCanal = await interaction.guild.channels.create({
-                        name: nome,
-                        type: ChannelType.GuildVoice,
-                        parent: categoria.id,
-                        permissionOverwrites: [
-                            {
-                                id: interaction.guild.roles.everyone.id,
-                                allow: [
-                                    PermissionFlagsBits.ViewChannel,
-                                    PermissionFlagsBits.Connect
-                                ]
-                            },
-                            {
-                                id: interaction.user.id,
-                                allow: [
-                                    PermissionFlagsBits.ViewChannel,
-                                    PermissionFlagsBits.Connect
-                                ]
-                            }
-                        ]
-                    });
-
-                    callsTemporarias.add(novoCanal.id);
-
-                    if (
-                        botMembro.permissions.has(PermissionFlagsBits.MoveMembers) &&
-                        novoCanal.permissionsFor(botMembro)
-                            ?.has(PermissionFlagsBits.Connect)
-                    ) {
-                        try {
-                            await membro.voice.setChannel(novoCanal);
-                        } catch (error) {
-                            console.error(
-                                'Call criada, mas não consegui mover o usuário:',
-                                error
-                            );
-                        }
-                    }
-
-                    if (novoCanal.members.size === 0) {
-                        agendarExclusaoCall(novoCanal);
-                    }
-
-                    return interaction.reply({
-                        content: `✅ Sua call **${nome}** foi criada!`,
-                        ephemeral: true
-                    });
-                }
-
-                if (!estaEmVoz(membro)) {
-                    return responderErro(
-                        interaction,
-                        '❌ Entre em uma call antes de utilizar esta ferramenta.'
-                    );
-                }
-
-                // ALTERAR LIMITE
-                if (ferramenta === 'quantidade') {
-                    return interaction.showModal(
-                        criarModal(
-                            'modal_limite_call',
-                            'Limite de pessoas',
-                            'limite_pessoas',
-                            'Digite o limite (0 a 99)',
-                            'Exemplo: 5. Use 0 para remover.'
-                        )
-                    );
-                }
-
-                // MOVER MEMBRO
-                if (ferramenta === 'mover') {
-                    const seletorMembro = new UserSelectMenuBuilder()
-                        .setCustomId('mover_membro')
-                        .setPlaceholder('Selecione o membro que deseja mover')
-                        .setMinValues(1)
-                        .setMaxValues(1);
-
-                    return interaction.reply({
-                        content: '👥 **Selecione o membro que deseja mover:**',
-                        components: [
-                            new ActionRowBuilder().addComponents(seletorMembro)
-                        ],
-                        ephemeral: true
-                    });
-                }
-
-                // MUTAR MEMBRO
-                if (ferramenta === 'mutar') {
-                    if (!eBooster(membro)) {
-                        return responderErro(
-                            interaction,
-                            '❌ A opção Mutar é exclusiva para Boosters.'
-                        );
-                    }
-
-                    return interaction.showModal(
-                        criarModal(
-                            'modal_mutar_membro',
-                            'Mutar membro',
-                            'id_membro',
-                            'ID do membro que deseja mutar',
-                            'Cole o ID do membro'
-                        )
-                    );
-                }
-
-                // DESMUTAR A SI MESMO
-                if (ferramenta === 'desmutar') {
-                    if (!membro.voice.serverMute) {
-                        return responderErro(
-                            interaction,
-                            'ℹ️ Você não está mutado pelo servidor. O mute local precisa ser desativado no próprio Discord.'
-                        );
-                    }
-
-                    const botMembro = await interaction.guild.members.fetchMe();
-
-                    if (!botMembro.permissions.has(PermissionFlagsBits.MuteMembers)) {
-                        return responderErro(
-                            interaction,
-                            '❌ Preciso da permissão Silenciar membros.'
-                        );
-                    }
-
-                    if (!await verificarCooldown(
-                        interaction,
-                        membro,
-                        'desmutar'
-                    )) {
-                        return;
-                    }
-
-                    await membro.voice.setMute(false);
-
-                    return interaction.reply({
-                        content: '✅ Seu mute de servidor foi removido com sucesso!',
-                        ephemeral: true
-                    });
-                }
-
-                // PRIVAR CALL
-                if (ferramenta === 'privar_call') {
-                    const canal = membro.voice.channel;
-                    const botMembro = await interaction.guild.members.fetchMe();
-
-                    if (!canal.permissionsFor(botMembro)
-                        ?.has(PermissionFlagsBits.ManageChannels)) {
-                        return responderErro(
-                            interaction,
-                            '❌ Preciso da permissão Gerenciar canais.'
-                        );
-                    }
-
-                    if (!await verificarCooldown(
-                        interaction,
-                        membro,
-                        'privar_call'
-                    )) {
-                        return;
-                    }
-
-                    await canal.permissionOverwrites.edit(
-                        interaction.guild.roles.everyone,
-                        { Connect: false }
-                    );
-
-                    await canal.permissionOverwrites.edit(
-                        interaction.user.id,
-                        {
-                            ViewChannel: true,
-                            Connect: true
-                        }
-                    );
-
-                    return interaction.reply({
-                        content: '🔒 A call foi trancada! Novas conexões estão bloqueadas.',
-                        ephemeral: true
-                    });
-                }
-
-                // DESPRIVAR CALL
-                if (ferramenta === 'desprivar_call') {
-                    const canal = membro.voice.channel;
-                    const botMembro = await interaction.guild.members.fetchMe();
-
-                    if (!canal.permissionsFor(botMembro)
-                        ?.has(PermissionFlagsBits.ManageChannels)) {
-                        return responderErro(
-                            interaction,
-                            '❌ Preciso da permissão Gerenciar canais.'
-                        );
-                    }
-
-                    if (!await verificarCooldown(
-                        interaction,
-                        membro,
-                        'desprivar_call'
-                    )) {
-                        return;
-                    }
-
-                    await canal.permissionOverwrites.edit(
-                        interaction.guild.roles.everyone,
-                        { Connect: null }
-                    );
-
-                    return interaction.reply({
-                        content: '🔓 A call foi destrancada! A entrada voltou a seguir as permissões do canal.',
-                        ephemeral: true
-                    });
-                }
             }
+
+            return;
         }
-
-        // COMANDOS SLASH
-        if (!interaction.isChatInputCommand()) return;
-
-        const comando = client.commands.get(interaction.commandName);
-        if (!comando) return;
-
-        await comando.execute(interaction);
-
-    } catch (error) {
-        console.error('Erro na interação:', error);
+    } catch (erro) {
+        console.error(
+            'Erro geral em interactionCreate:',
+            erro
+        );
 
         await responderErro(
             interaction,
-            '❌ Ocorreu um erro. Verifique as permissões do bot e tente novamente.'
+            '❌ Ocorreu um erro ao processar esta interação.'
         );
     }
 });
 
-// ==================================================
-// LIGAR BOT
-// ==================================================
+// ======================================================
+// TRATAMENTO DE ERROS
+// ======================================================
 
-if (!process.env.DISCORD_TOKEN) {
-    console.error('Token não encontrado nas variáveis de ambiente.');
+process.on('unhandledRejection', erro => {
+    console.error(
+        'Erro não tratado (Promise):',
+        erro
+    );
+});
+
+process.on('uncaughtException', erro => {
+    console.error(
+        'Erro não tratado:',
+        erro
+    );
+});
+
+// ======================================================
+// LOGIN
+// ======================================================
+
+if (!TOKEN) {
+    console.error(
+        '❌ DISCORD_TOKEN não foi encontrado nas variáveis de ambiente.'
+    );
 } else {
-    client.login(process.env.DISCORD_TOKEN).catch(error => {
-        console.error('Falha ao conectar o bot:', error.message);
+    client.login(TOKEN).catch(erro => {
+        console.error(
+            '❌ Não foi possível conectar o bot ao Discord:',
+            erro
+        );
     });
-}
+                            }
