@@ -1,3 +1,4 @@
+
 require('dotenv').config();
 
 const fs = require('node:fs');
@@ -93,8 +94,7 @@ const temporizadoresCall = new Map();
 
 function lerJSON(arquivo) {
     try {
-        const conteudo = fs.readFileSync(arquivo, 'utf8');
-        return JSON.parse(conteudo);
+        return JSON.parse(fs.readFileSync(arquivo, 'utf8'));
     } catch (erro) {
         console.error(`Erro ao ler ${arquivo}:`, erro);
         return {};
@@ -183,10 +183,7 @@ if (fs.existsSync(pastaComandos)) {
                 );
             }
         } catch (erro) {
-            console.error(
-                `❌ Erro ao carregar ${arquivo}:`,
-                erro
-            );
+            console.error(`❌ Erro ao carregar ${arquivo}:`, erro);
         }
     }
 }
@@ -279,6 +276,9 @@ function ehCallTemporaria(canal) {
     );
 }
 
+// CORREÇÃO:
+// Membros dentro da própria call temporária podem controlá-la.
+// Administradores com ManageChannels também podem controlá-la.
 function podeControlarCall(interaction, canal) {
     if (!canal || !interaction.member) {
         return false;
@@ -286,7 +286,7 @@ function podeControlarCall(interaction, canal) {
 
     if (
         ehCallTemporaria(canal) &&
-        canal.name === `call-${interaction.user.id}`
+        interaction.member.voice?.channelId === canal.id
     ) {
         return true;
     }
@@ -378,7 +378,22 @@ async function criarCallTemporaria(interaction) {
         }
 
         const canais = await guild.channels.fetch();
-        const nome = `call-${membro.id}`;
+
+        // Nome seguro com o nome do usuário e seu ID para evitar colisões.
+        const nomeSeguro = (
+            membro.displayName ||
+            membro.user.globalName ||
+            membro.user.username
+        )
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .replace(/[^a-z0-9_-]/g, '-')
+            .replace(/-+/g, '-')
+            .replace(/^-|-$/g, '')
+            .slice(0, 35) || 'membro';
+
+        const nome = `call-${nomeSeguro}-${membro.id}`;
 
         const existente = canais.find(canal =>
             canal &&
@@ -420,11 +435,18 @@ async function criarCallTemporaria(interaction) {
             ]
         });
 
+        // A criação não depende de o membro estar em outra call.
         await interaction.reply({
-            content: `✅ Sua call foi criada: ${canal}`,
+            content:
+                `✅ Call criada com sucesso!\n` +
+                `🎙️ **Nome:** ${canal.name}\n` +
+                `👑 **Criador:** ${membro}\n` +
+                `🔗 **Entrar:** ${canal}`,
             flags: MessageFlags.Ephemeral
         });
 
+        // Se já estiver em uma call, tenta movê-lo para a nova.
+        // Se não estiver, a call continua criada normalmente.
         if (membro.voice?.channel) {
             try {
                 await membro.voice.setChannel(canal);
@@ -436,15 +458,26 @@ async function criarCallTemporaria(interaction) {
 
                 await interaction.followUp({
                     content:
-                        '⚠️ A call foi criada, mas não consegui mover você. Confira as permissões do bot.',
+                        '⚠️ A call foi criada, mas não consegui mover você. Você pode entrar pelo canal criado.',
                     flags: MessageFlags.Ephemeral
                 }).catch(() => null);
             }
         }
 
+        console.log(
+            `🎙️ Call criada por ${membro.user.tag}: ${canal.name}`
+        );
+
         return canal;
     } catch (erro) {
         console.error('Erro ao criar call:', erro);
+
+        if (interaction.replied || interaction.deferred) {
+            return responderErro(
+                interaction,
+                '❌ Não consegui criar a call. Confira as permissões do bot e a categoria.'
+            );
+        }
 
         return responderErro(
             interaction,
@@ -559,10 +592,7 @@ function criarBotoesPublicacao(id) {
 
 async function publicarMensagem(mensagem) {
     if (mensagem.author.bot || !mensagem.guild) return;
-
-    if (mensagem.channelId !== CANAL_PUBLICACOES_ID) {
-        return;
-    }
+    if (mensagem.channelId !== CANAL_PUBLICACOES_ID) return;
 
     const texto = mensagem.content?.trim() || '';
 
@@ -596,9 +626,7 @@ async function publicarMensagem(mensagem) {
                 })
             })
             .setDescription(texto.slice(0, 4096) || '\u200B')
-            .setFooter({
-                text: 'ZODÍACO • PUBLICAÇÃO'
-            })
+            .setFooter({ text: 'ZODÍACO • PUBLICAÇÃO' })
             .setTimestamp(data);
 
         const arquivos = [];
@@ -650,7 +678,6 @@ async function publicarMensagem(mensagem) {
         });
 
         publicacoes[mensagem.id].mensagemPublicadaId = publicada.id;
-
         salvarPublicacoes(publicacoes);
 
         await mensagem.delete().catch(erro => {
@@ -676,10 +703,7 @@ async function limparCanalSemanal() {
             .fetch(CANAL_LIMPEZA_ID)
             .catch(() => null);
 
-        if (
-            !canal?.isTextBased() ||
-            !canal.messages
-        ) {
+        if (!canal?.isTextBased() || !canal.messages) {
             console.error(
                 '❌ Canal de limpeza não encontrado ou inválido.'
             );
@@ -711,9 +735,7 @@ async function limparCanalSemanal() {
                     true
                 ).catch(() => null);
 
-                if (excluidas) {
-                    total += excluidas.size;
-                }
+                if (excluidas) total += excluidas.size;
             }
 
             for (const mensagem of antigas.values()) {
@@ -730,10 +752,8 @@ async function limparCanalSemanal() {
         }
 
         const estado = lerJSON(ARQUIVO_LIMPEZA);
-
         estado.ultimaLimpeza = new Date().toISOString();
         estado.totalExcluidas = total;
-
         salvarJSON(ARQUIVO_LIMPEZA, estado);
 
         console.log(
@@ -790,10 +810,7 @@ client.on('voiceStateUpdate', async (anterior, atual) => {
             programarExclusaoCall(canalAnterior);
         }
     } catch (erro) {
-        console.error(
-            'Erro ao atualizar estado de voz:',
-            erro
-        );
+        console.error('Erro ao atualizar estado de voz:', erro);
     }
 });
 
@@ -815,10 +832,7 @@ client.on('messageCreate', async mensagem => {
 
 client.on('interactionCreate', async interaction => {
     try {
-        // --------------------------------------------------
         // COMANDOS SLASH
-        // --------------------------------------------------
-
         if (interaction.isChatInputCommand()) {
             const comando = client.commands.get(
                 interaction.commandName
@@ -848,10 +862,7 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        // --------------------------------------------------
-        // MENUS DE SELEÇÃO: CARGOS E CALLS
-        // --------------------------------------------------
-
+        // MENUS DE SELEÇÃO
         if (interaction.isStringSelectMenu()) {
             const id = interaction.customId;
 
@@ -872,12 +883,10 @@ client.on('interactionCreate', async interaction => {
                 const opcao = interaction.values[0];
                 const canal = obterCall(interaction);
 
-                // CRIAR CALL
                 if (opcao === 'criar_call') {
                     return criarCallTemporaria(interaction);
                 }
 
-                // DESMUTAR A SI MESMO
                 if (opcao === 'desmutar') {
                     if (!interaction.member?.voice?.channel) {
                         return responderErro(
@@ -911,7 +920,7 @@ client.on('interactionCreate', async interaction => {
                 }
 
                 if (
-                    canal.parentId !== CATEGORIA_CALL ||
+                    !estaNaCategoriaCall(canal) ||
                     !podeControlarCall(interaction, canal)
                 ) {
                     return responderErro(
@@ -920,7 +929,6 @@ client.on('interactionCreate', async interaction => {
                     );
                 }
 
-                // PRIVAR CALL
                 if (opcao === 'privar_call') {
                     try {
                         await canal.permissionOverwrites.edit(
@@ -956,7 +964,6 @@ client.on('interactionCreate', async interaction => {
                     }
                 }
 
-                // LIBERAR CALL
                 if (opcao === 'desprivar_call') {
                     try {
                         await canal.permissionOverwrites.edit(
@@ -982,7 +989,6 @@ client.on('interactionCreate', async interaction => {
                     }
                 }
 
-                // DEFINIR LIMITE
                 if (opcao === 'quantidade') {
                     const modal = new ModalBuilder()
                         .setCustomId('modal_limite_call')
@@ -1004,7 +1010,6 @@ client.on('interactionCreate', async interaction => {
                     return interaction.showModal(modal);
                 }
 
-                // MOVER MEMBRO
                 if (opcao === 'mover') {
                     const seletor = new UserSelectMenuBuilder()
                         .setCustomId('call_selecionar_membro')
@@ -1022,7 +1027,6 @@ client.on('interactionCreate', async interaction => {
                     });
                 }
 
-                // MUTAR: EXCLUSIVO PARA BOOSTERS
                 if (opcao === 'mutar') {
                     if (!ehBooster(interaction.member)) {
                         return responderErro(
@@ -1055,10 +1059,7 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        // --------------------------------------------------
         // BOTÕES
-        // --------------------------------------------------
-
         if (interaction.isButton()) {
             const id = interaction.customId;
 
@@ -1073,7 +1074,6 @@ client.on('interactionCreate', async interaction => {
                 });
             }
 
-            // LIMITE DA CALL
             if (id === 'call_limite') {
                 const canal = obterCall(interaction);
 
@@ -1108,7 +1108,6 @@ client.on('interactionCreate', async interaction => {
                 return interaction.showModal(modal);
             }
 
-            // MOVER MEMBRO
             if (id === 'call_mover') {
                 const canal = obterCall(interaction);
 
@@ -1138,7 +1137,6 @@ client.on('interactionCreate', async interaction => {
                 });
             }
 
-            // MUTAR MEMBRO
             if (id === 'call_mutar') {
                 if (!ehBooster(interaction.member)) {
                     return responderErro(
@@ -1175,7 +1173,6 @@ client.on('interactionCreate', async interaction => {
                 });
             }
 
-            // DESMUTAR A SI MESMO
             if (id === 'call_desmutar') {
                 if (!interaction.member?.voice?.channel) {
                     return responderErro(
@@ -1201,7 +1198,7 @@ client.on('interactionCreate', async interaction => {
                 }
             }
 
-            // PRIVAR OU LIBERAR CALL
+            // LOCK / UNLOCK
             if (id === 'call_privada' || id === 'call_publica') {
                 const canal = obterCall(interaction);
 
@@ -1212,7 +1209,7 @@ client.on('interactionCreate', async interaction => {
                 ) {
                     return responderErro(
                         interaction,
-                        '❌ Entre em uma call que você possa controlar.'
+                        '❌ Entre em uma call temporária para controlar a privacidade.'
                     );
                 }
 
@@ -1227,18 +1224,15 @@ client.on('interactionCreate', async interaction => {
                         }
                     );
 
-                    if (!publica) {
-                        await canal.permissionOverwrites.edit(
-                            interaction.user.id,
-                            {
-                                ViewChannel: true,
-                                Connect: true,
-                                Speak: true,
-                                ManageChannels: true,
-                                MoveMembers: true
-                            }
-                        );
-                    }
+                    // Garante que quem clicou continue podendo ver e entrar.
+                    await canal.permissionOverwrites.edit(
+                        interaction.user.id,
+                        {
+                            ViewChannel: true,
+                            Connect: true,
+                            Speak: true
+                        }
+                    );
 
                     return responderSucesso(
                         interaction,
@@ -1254,7 +1248,7 @@ client.on('interactionCreate', async interaction => {
 
                     return responderErro(
                         interaction,
-                        '❌ Não consegui alterar a privacidade da call.'
+                        '❌ Não consegui alterar a privacidade. Confira se o bot tem Gerenciar canais.'
                     );
                 }
             }
@@ -1380,22 +1374,17 @@ client.on('interactionCreate', async interaction => {
                         },
                         {
                             name: 'Curtidas',
-                            value: String(
-                                publicacao.curtidas?.length || 0
-                            ),
+                            value: String(publicacao.curtidas?.length || 0),
                             inline: true
                         },
                         {
                             name: 'Comentários',
-                            value: String(
-                                publicacao.comentarios?.length || 0
-                            ),
+                            value: String(publicacao.comentarios?.length || 0),
                             inline: true
                         },
                         {
                             name: 'Texto',
-                            value: publicacao.texto?.slice(0, 1024) ||
-                                'Sem texto.'
+                            value: publicacao.texto?.slice(0, 1024) || 'Sem texto.'
                         }
                     );
 
@@ -1408,10 +1397,7 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        // --------------------------------------------------
         // MENUS DE USUÁRIOS
-        // --------------------------------------------------
-
         if (interaction.isUserSelectMenu()) {
             const id = interaction.customId;
 
@@ -1501,7 +1487,6 @@ client.on('interactionCreate', async interaction => {
                 );
             }
 
-            // MENU ANTIGO: ESCOLHER CANAL DE DESTINO
             if (id === 'mover_membro') {
                 const seletor = new ChannelSelectMenuBuilder()
                     .setCustomId(`mover_canal:${alvo.id}`)
@@ -1524,11 +1509,7 @@ client.on('interactionCreate', async interaction => {
 
             const botMembro = await interaction.guild.members.fetchMe();
 
-            if (
-                !botMembro.permissions.has(
-                    PermissionFlagsBits.MoveMembers
-                )
-            ) {
+            if (!botMembro.permissions.has(PermissionFlagsBits.MoveMembers)) {
                 return responderErro(
                     interaction,
                     '❌ Preciso da permissão Mover membros.'
@@ -1552,10 +1533,7 @@ client.on('interactionCreate', async interaction => {
             }
         }
 
-        // --------------------------------------------------
         // MENU DE CANAL DE DESTINO
-        // --------------------------------------------------
-
         if (
             interaction.isChannelSelectMenu() &&
             interaction.customId.startsWith('mover_canal:')
@@ -1605,11 +1583,7 @@ client.on('interactionCreate', async interaction => {
 
             const botMembro = await interaction.guild.members.fetchMe();
 
-            if (
-                !botMembro.permissions.has(
-                    PermissionFlagsBits.MoveMembers
-                )
-            ) {
+            if (!botMembro.permissions.has(PermissionFlagsBits.MoveMembers)) {
                 return responderErro(
                     interaction,
                     '❌ Preciso da permissão Mover membros.'
@@ -1633,10 +1607,7 @@ client.on('interactionCreate', async interaction => {
             }
         }
 
-        // --------------------------------------------------
         // FORMULÁRIOS / MODAIS
-        // --------------------------------------------------
-
         if (interaction.isModalSubmit()) {
             // LIMITE DE PESSOAS
             if (interaction.customId === 'modal_limite_call') {
@@ -1661,10 +1632,7 @@ client.on('interactionCreate', async interaction => {
                     .getTextInputValue(campoId)
                     .trim();
 
-                if (
-                    !/^\d{1,2}$/.test(valor) ||
-                    Number(valor) > 99
-                ) {
+                if (!/^\d{1,2}$/.test(valor) || Number(valor) > 99) {
                     return responderErro(
                         interaction,
                         '❌ Digite um número de 0 a 99. Use 0 para remover o limite.'
@@ -1681,10 +1649,7 @@ client.on('interactionCreate', async interaction => {
                             : `✅ Limite definido para ${valor} pessoas.`
                     );
                 } catch (erro) {
-                    console.error(
-                        'Erro ao definir limite:',
-                        erro
-                    );
+                    console.error('Erro ao definir limite:', erro);
 
                     return responderErro(
                         interaction,
@@ -1728,10 +1693,7 @@ client.on('interactionCreate', async interaction => {
                         '✅ Membro mutado com sucesso.'
                     );
                 } catch (erro) {
-                    console.error(
-                        'Erro ao mutar membro pelo modal:',
-                        erro
-                    );
+                    console.error('Erro ao mutar membro pelo modal:', erro);
 
                     return responderErro(
                         interaction,
@@ -1827,4 +1789,4 @@ if (!TOKEN) {
             erro
         );
     });
-                               }
+}
