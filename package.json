@@ -1,19 +1,19 @@
 
 {
   "name": "public",
-  "version": "1.0.0",
-  "description": "Bot Discord da Zodíaco",
-  "main": "index.js",
-  "scripts": {
-    "start": "node index.js",
-    "deploy": "node deploy.js",
-    "test": "echo \"No tests configured\""
-  },
-  "license": "ISC",
-  "dependencies": {
-    "@napi-rs/canvas": "^0.1.80",
-    "discord.js": "^14.27.0",
-    "dotenv": "^18.0.8",
-    "node-cron": "^4.6.0"
-  }
-}
+    "version": "1.0.0",
+      "description": "Bot Discord da Zodíaco",
+        "main": "index.js",
+          "scripts": {
+              "start": "node index.js",
+                  "deploy": "node deploy.js",
+                      "test": "echo \"No tests configured\""
+                        },
+                          "license": "ISC",
+                            "dependencies": {
+                                "@napi-rs/canvas": "^0.1.80",
+                                    "discord.js": "^14.27.0",
+                                        "dotenv": "^18.0.8",
+                                            "node-cron": "^4.6.0"
+                                              }
+                                              }
