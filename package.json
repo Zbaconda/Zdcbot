@@ -2,21 +2,18 @@
 {
   "name": "public",
   "version": "1.0.0",
+  "description": "Bot Discord da Zodíaco",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node index.js",
-    "deploy": "node deploy.js"
+    "deploy": "node deploy.js",
+    "test": "echo \"No tests configured\""
   },
-  "author": "",
   "license": "ISC",
   "dependencies": {
     "@napi-rs/canvas": "^0.1.80",
     "discord.js": "^14.27.0",
     "dotenv": "^18.0.8",
-    "node-cron": "^4.2.1",
-    "package.json": "^2.0.1"
-  },
-  "devDependencies": {},
-  "description": ""
+    "node-cron": "^4.6.0"
+  }
 }
