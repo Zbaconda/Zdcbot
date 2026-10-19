@@ -33,8 +33,8 @@ const { createCanvas, loadImage } = require('@napi-rs/canvas');
 const CATEGORIA_CALL = '1560763293994323999';
 const CARGO_BOOSTER = '1559367297053757551';
 
-const CANAL_PUBLICACOES_ID = '1561543615329730601';
-const CANAL_LIMPEZA_ID = '1561543615329730601';
+const CANAL_PUBLICACOES_ID = '1561569037694275584';
+const CANAL_LIMPEZA_ID = '1561569037694275584';
 const FUSO_HORARIO = 'America/Sao_Paulo';
 
 const PASTA_DADOS = path.join(__dirname, 'data');
