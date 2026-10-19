@@ -1,9 +1,9 @@
+
 require('dotenv').config();
 
 const fs = require('node:fs');
 const path = require('node:path');
 const cron = require('node-cron');
-const { createCanvas, loadImage } = require('@napi-rs/canvas');
 
 const {
     Client,
@@ -24,7 +24,8 @@ const {
     ChannelSelectMenuBuilder,
     StringSelectMenuBuilder,
     REST,
-    Routes
+    Routes,
+    AttachmentBuilder
 } = require('discord.js');
 
 // ======================================================
@@ -515,160 +516,7 @@ function salvarPublicacoes(dados) {
     salvarJSON(ARQUIVO_PUBLICACOES, dados);
 }
 
-async function criarImagemPublicacao(mensagem, anexos) {
-    const canvas = createCanvas(1200, 675);
-    const ctx = canvas.getContext('2d');
-
-    const gradiente = ctx.createLinearGradient(
-        0, 0, 1200, 675
-    );
-
-    gradiente.addColorStop(0, '#171927');
-    gradiente.addColorStop(0.5, '#343b67');
-    gradiente.addColorStop(1, '#11131b');
-
-    ctx.fillStyle = gradiente;
-    ctx.fillRect(0, 0, 1200, 675);
-
-    ctx.fillStyle = 'rgba(255,255,255,0.08)';
-    ctx.beginPath();
-    ctx.arc(1080, 80, 230, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 40px sans-serif';
-    ctx.fillText('ZODÍACO • PUBLICAÇÕES', 55, 75);
-
-    const avatarURL = mensagem.author.displayAvatarURL({
-        extension: 'png',
-        size: 256
-    });
-
-    try {
-        const avatar = await loadImage(avatarURL);
-
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(95, 150, 38, 0, Math.PI * 2);
-        ctx.closePath();
-        ctx.clip();
-
-        ctx.drawImage(
-            avatar,
-            57,
-            112,
-            76,
-            76
-        );
-
-        ctx.restore();
-    } catch (erro) {
-        console.warn(
-            'Não foi possível carregar o avatar:',
-            erro.message
-        );
-    }
-
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 30px sans-serif';
-
-    ctx.fillText(
-        mensagem.member?.displayName ||
-        mensagem.author.username,
-        155,
-        160
-    );
-
-    ctx.fillStyle = '#d5d8e8';
-    ctx.font = '22px sans-serif';
-
-    const texto = mensagem.content?.trim() || 'Nova publicação';
-
-    const palavras = texto.split(/\s+/);
-    let linha = '';
-    let y = 250;
-    const larguraMaxima = 1080;
-
-    for (const palavra of palavras) {
-        const teste = linha
-            ? `${linha} ${palavra}`
-            : palavra;
-
-        if (
-            ctx.measureText(teste).width > larguraMaxima &&
-            linha
-        ) {
-            ctx.fillText(linha, 60, y);
-            linha = palavra;
-            y += 38;
-
-            if (y > 550) break;
-        } else {
-            linha = teste;
-        }
-    }
-
-    if (linha && y <= 550) {
-        ctx.fillText(linha, 60, y);
-    }
-
-    let posicaoImagem = 0;
-
-    for (const anexo of anexos) {
-        if (posicaoImagem >= 4) break;
-
-        try {
-            const imagem = await loadImage(anexo.url);
-
-            const largura = 240;
-            const altura = 150;
-            const x = 60 + posicaoImagem * 270;
-            const yImagem = 440;
-
-            ctx.save();
-
-            ctx.beginPath();
-            ctx.roundRect(
-                x,
-                yImagem,
-                largura,
-                altura,
-                15
-            );
-
-            ctx.clip();
-
-            ctx.drawImage(
-                imagem,
-                x,
-                yImagem,
-                largura,
-                altura
-            );
-
-            ctx.restore();
-
-            posicaoImagem++;
-        } catch (erro) {
-            console.warn(
-                'Não foi possível carregar um anexo:',
-                erro.message
-            );
-        }
-    }
-
-    ctx.fillStyle = '#aeb4d0';
-    ctx.font = '18px sans-serif';
-
-    ctx.fillText(
-        'Comunidade Zodíaco',
-        60,
-        640
-    );
-
-    return canvas.toBuffer('image/png');
-}
-
+// Cria os quatro botões com estilo cinza.
 function criarBotoesPublicacao(id) {
     const linha = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
@@ -681,13 +529,13 @@ function criarBotoesPublicacao(id) {
             .setCustomId(`pub_comentar_${id}`)
             .setLabel('Comentar')
             .setEmoji('💬')
-            .setStyle(ButtonStyle.Primary),
+            .setStyle(ButtonStyle.Secondary),
 
         new ButtonBuilder()
             .setCustomId(`pub_compartilhar_${id}`)
             .setLabel('Compartilhar')
             .setEmoji('🔁')
-            .setStyle(ButtonStyle.Success),
+            .setStyle(ButtonStyle.Secondary),
 
         new ButtonBuilder()
             .setCustomId(`pub_detalhes_${id}`)
@@ -708,8 +556,7 @@ async function publicarMensagem(mensagem) {
 
     const texto = mensagem.content?.trim() || '';
 
-    // Corrigido: attachments é uma Collection.
-    // Convertemos seus valores em array antes de usar filter e slice.
+    // Identifica imagens anexadas à mensagem.
     const imagensAnexadas = [
         ...mensagem.attachments.values()
     ]
@@ -737,50 +584,101 @@ async function publicarMensagem(mensagem) {
             return;
         }
 
-        const imagemBuffer = await criarImagemPublicacao(
-            mensagem,
-            imagensAnexadas
-        );
-
-        const { AttachmentBuilder } = require('discord.js');
-
-        const arquivo = new AttachmentBuilder(
-            imagemBuffer,
-            {
-                name: `publicacao-${mensagem.id}.png`
-            }
-        );
-
         const publicacoes = obterPublicacoes();
+
+        const nomeAutor =
+            mensagem.member?.displayName ||
+            mensagem.author.globalName ||
+            mensagem.author.username;
+
+        const avatarURL = mensagem.author.displayAvatarURL({
+            extension: 'png',
+            size: 256
+        });
+
+        const dataPublicacao = new Date();
+
+        // Embed preto: a identidade do autor fica no cabeçalho,
+        // com avatar, nome e data.
+        const embed = new EmbedBuilder()
+            .setColor(0x000000)
+            .setAuthor({
+                name: nomeAutor,
+                iconURL: avatarURL
+            })
+            .setDescription(
+                texto
+                    ? texto.slice(0, 4096)
+                    : '\u200B'
+            )
+            .setFooter({
+                text: 'ZODÍACO • PUBLICAÇÃO'
+            })
+            .setTimestamp(dataPublicacao);
+
+        const arquivos = [];
+
+        // Sem imagem: o embed contém apenas o texto.
+        // Com imagem: a primeira imagem fica dentro do embed.
+        if (imagensAnexadas.length > 0) {
+            const primeiraImagem = imagensAnexadas[0];
+
+            const respostaImagem = await fetch(
+                primeiraImagem.url
+            );
+
+            if (!respostaImagem.ok) {
+                throw new Error(
+                    `Falha ao baixar a imagem: HTTP ${respostaImagem.status}`
+                );
+            }
+
+            const bufferImagem = Buffer.from(
+                await respostaImagem.arrayBuffer()
+            );
+
+            const extensaoEncontrada =
+                (primeiraImagem.name || '').match(
+                    /\.(png|jpe?g|gif|webp)$/i
+                );
+
+            const extensao = extensaoEncontrada
+                ? extensaoEncontrada[0].toLowerCase()
+                : '.png';
+
+            const nomeArquivo =
+                `publicacao-${mensagem.id}${extensao}`;
+
+            const arquivo = new AttachmentBuilder(
+                bufferImagem,
+                {
+                    name: nomeArquivo
+                }
+            );
+
+            arquivos.push(arquivo);
+
+            embed.setImage(
+                `attachment://${nomeArquivo}`
+            );
+        }
 
         publicacoes[mensagem.id] = {
             autorId: mensagem.author.id,
-            autorNome: mensagem.author.username,
+            autorNome: nomeAutor,
             guildId: mensagem.guild.id,
             canalId: mensagem.channelId,
             texto,
             mensagemOriginalId: mensagem.id,
             curtidas: [],
             comentarios: [],
-            data: new Date().toISOString(),
+            data: dataPublicacao.toISOString(),
             mensagemPublicadaId: null
         };
 
-        const embed = new EmbedBuilder()
-            .setColor(0x5865F2)
-            .setTitle('📣 Nova publicação')
-            .setDescription(
-                `Publicação de ${mensagem.author}`
-            )
-            .setImage(`attachment://publicacao-${mensagem.id}.png`)
-            .setFooter({
-                text: 'Zodíaco • Comunidade'
-            })
-            .setTimestamp();
-
         const mensagemPublicada = await canalPublicacoes.send({
             embeds: [embed],
-            files: [arquivo],
+            files: arquivos,
             components: criarBotoesPublicacao(mensagem.id)
         });
 
@@ -789,7 +687,13 @@ async function publicarMensagem(mensagem) {
 
         salvarPublicacoes(publicacoes);
 
-        await mensagem.delete().catch(() => null);
+        // Apaga a mensagem original após publicar a versão do bot.
+        await mensagem.delete().catch(erro => {
+            console.warn(
+                'Não foi possível apagar a mensagem original:',
+                erro.message
+            );
+        });
 
         console.log(
             `📣 Publicação criada: ${mensagem.id}`
@@ -806,8 +710,7 @@ async function publicarMensagem(mensagem) {
 // LIMPEZA SEMANAL DO CANAL
 // ======================================================
 
-// Canal corrigido: 1559375230202290256
-// Executa todo domingo às 00:00 no horário de Brasília.
+// Todo domingo às 00:00 no horário de Brasília.
 
 async function limparCanalSemanal() {
     try {
@@ -884,7 +787,6 @@ async function limparCanalSemanal() {
 
                 totalExcluidas++;
 
-                // Pequena pausa entre exclusões individuais.
                 await new Promise(resolve =>
                     setTimeout(resolve, 350)
                 );
@@ -906,7 +808,6 @@ async function limparCanalSemanal() {
     }
 }
 
-// Todo domingo, às 00:00, horário de Brasília.
 cron.schedule(
     '0 0 * * 0',
     async () => {
@@ -949,12 +850,10 @@ client.on('voiceStateUpdate', async (estadoAnterior, estadoAtual) => {
         const canalAnterior = estadoAnterior.channel;
         const canalAtual = estadoAtual.channel;
 
-        // Cancelar exclusão se alguém entrar.
         if (canalAtual) {
             cancelarTemporizadorCall(canalAtual.id);
         }
 
-        // Se alguém sair de uma chamada temporária, verificar se ficou vazia.
         if (
             canalAnterior &&
             canalAnterior.parentId === CATEGORIA_CALL &&
@@ -963,7 +862,6 @@ client.on('voiceStateUpdate', async (estadoAnterior, estadoAtual) => {
             programarExclusaoCall(canalAnterior);
         }
 
-        // Se alguém entrou em uma chamada, cancelar temporizador.
         if (
             canalAtual &&
             canalAtual.parentId === CATEGORIA_CALL
@@ -1097,7 +995,6 @@ client.on('interactionCreate', async interaction => {
         // --------------------------------------------------
 
         if (interaction.isModalSubmit()) {
-            // Limite de pessoas na chamada.
             if (
                 interaction.customId === 'modal_limite_call'
             ) {
@@ -1628,9 +1525,14 @@ client.on('interactionCreate', async interaction => {
                     );
                 }
 
+                const data = new Date(publicacao.data);
+                const timestamp = Math.floor(
+                    data.getTime() / 1000
+                );
+
                 const embed = new EmbedBuilder()
                     .setTitle('ℹ️ Detalhes da publicação')
-                    .setColor(0x5865F2)
+                    .setColor(0x000000)
                     .addFields(
                         {
                             name: 'Autor',
@@ -1653,9 +1555,7 @@ client.on('interactionCreate', async interaction => {
                         },
                         {
                             name: 'Publicado em',
-                            value: `<t:${Math.floor(
-                                new Date(publicacao.data).getTime() / 1000
-                            )}:F>`
+                            value: `<t:${timestamp}:F>`
                         },
                         {
                             name: 'Texto',
@@ -1862,4 +1762,4 @@ if (!TOKEN) {
             erro
         );
     });
-                            }
+}
