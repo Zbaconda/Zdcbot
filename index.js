@@ -406,19 +406,19 @@ function criarBotoesPublicacao(id) {
         new ButtonBuilder()
             .setCustomId(`pub_like_${id}`)
             .setLabel('Curtir')
-            .setEmoji('❤️')
+            .setEmoji('<a:a_coraopulante:1561585804286107708>')
             .setStyle(ButtonStyle.Secondary),
 
         new ButtonBuilder()
             .setCustomId(`pub_comentar_${id}`)
             .setLabel('Comentar')
-            .setEmoji('💬')
+            .setEmoji('<a:a_morceguinho:1561585818416582716>')
             .setStyle(ButtonStyle.Secondary),
 
         new ButtonBuilder()
             .setCustomId(`pub_compartilhar_${id}`)
             .setLabel('Compartilhar')
-            .setEmoji('🔁')
+            .setEmoji('<a:a_florgirando:1561585775106199562>')
             .setStyle(ButtonStyle.Secondary)
     );
 
@@ -426,7 +426,7 @@ function criarBotoesPublicacao(id) {
         new ButtonBuilder()
             .setCustomId(`pub_detalhes_${id}`)
             .setLabel('Detalhes')
-            .setEmoji('ℹ️')
+            .setEmoji('<:a_cargoplug:1561585789501046924>')
             .setStyle(ButtonStyle.Secondary)
     );
 
@@ -480,7 +480,7 @@ async function publicarMensagem(mensagem) {
                 iconURL: avatarURL
             })
             .setDescription(texto ? texto.slice(0, 4096) : '\u200B')
-            .setFooter({ text: 'ZODÍACO • PUBLICAÇÃO' })
+            .setFooter({ text: 'ZODIX • PUBLICAÇÃO' })
             .setTimestamp(dataPublicacao);
 
         const arquivos = [];
@@ -1262,4 +1262,4 @@ if (!TOKEN) {
     client.login(TOKEN).catch(erro => {
         console.error('❌ Não foi possível conectar o bot ao Discord:', erro);
     });
-    }
+            }
