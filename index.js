@@ -266,12 +266,13 @@ function estaNaCategoriaCall(canal) {
     );
 }
 
+// Reconhece calls temporárias sem exigir o prefixo "call-".
+// IMPORTANTE: todos os canais de voz nessa categoria serão reconhecidos.
 function ehCallTemporaria(canal) {
     return Boolean(
         canal &&
         canal.type === ChannelType.GuildVoice &&
-        estaNaCategoriaCall(canal) &&
-        /^call-[a-z0-9_-]+$/i.test(canal.name)
+        estaNaCategoriaCall(canal)
     );
 }
 
@@ -296,9 +297,7 @@ function podeControlarCall(interaction, canal) {
     );
 }
 
-// CORREÇÃO: PRIVACIDADE PARA QUALQUER CALL DE VOZ.
-// Não verifica nome, categoria nem quem criou o canal.
-// Um membro pode controlar a privacidade da call em que está.
+// PRIVACIDADE PARA QUALQUER CALL DE VOZ.
 function podeAlterarPrivacidade(interaction, canal) {
     if (
         !canal ||
@@ -404,10 +403,9 @@ async function criarCallTemporaria(interaction) {
 
         const canais = await guild.channels.fetch();
 
+        // Usa somente o nome de usuário, sem "call-" e sem ID.
         const nomeSeguro = (
-            membro.displayName ||
-            membro.user.globalName ||
-            membro.user.username
+            membro.user.username || 'membro'
         )
             .normalize('NFD')
             .replace(/[\u0300-\u036f]/g, '')
@@ -415,22 +413,23 @@ async function criarCallTemporaria(interaction) {
             .replace(/[^a-z0-9_-]/g, '-')
             .replace(/-+/g, '-')
             .replace(/^-|-$/g, '')
-            .slice(0, 35) || 'membro';
+            .slice(0, 100) || 'membro';
 
-        const nome = `call-${nomeSeguro}-${membro.id}`;
+        // Evita nomes duplicados sem usar o ID do usuário.
+        let nome = nomeSeguro;
+        let numero = 2;
 
-        const existente = canais.find(canal =>
-            canal &&
-            canal.type === ChannelType.GuildVoice &&
-            canal.parentId === CATEGORIA_CALL &&
-            canal.name === nome
-        );
-
-        if (existente) {
-            return responderErro(
-                interaction,
-                `❌ Você já possui uma call temporária: ${existente}`
-            );
+        while (
+            canais.some(canal =>
+                canal &&
+                canal.type === ChannelType.GuildVoice &&
+                canal.parentId === CATEGORIA_CALL &&
+                canal.name === nome
+            )
+        ) {
+            const sufixo = `-${numero}`;
+            nome = `${nomeSeguro.slice(0, 100 - sufixo.length)}${sufixo}`;
+            numero++;
         }
 
         const canal = await guild.channels.create({
@@ -451,10 +450,8 @@ async function criarCallTemporaria(interaction) {
 
         await interaction.reply({
             content:
-                `✅ Call criada com sucesso!\n` +
-                `🎙️ **Nome:** ${canal.name}\n` +
-                `👤 **Criada por:** ${membro}\n` +
-                `🔗 **Entrar:** ${canal}`,
+                `✅ **Call criada com sucesso!**\n` +
+                `🎙️ **Vá para a call:** ${canal}`,
             flags: MessageFlags.Ephemeral
         });
 
@@ -494,8 +491,6 @@ async function criarCallTemporaria(interaction) {
 // PRIVACIDADE DE QUALQUER CALL DE VOZ
 // ======================================================
 
-// Bloqueia o acesso geral e autoriza individualmente
-// os membros que já estão no canal.
 async function privarCall(canal) {
     if (
         !canal ||
@@ -524,7 +519,6 @@ async function privarCall(canal) {
     }
 }
 
-// Libera o acesso geral novamente.
 async function liberarCall(canal) {
     if (
         !canal ||
@@ -978,8 +972,6 @@ client.on('interactionCreate', async interaction => {
                     );
                 }
 
-                // PRIVACIDADE: TRATADA ANTES DA RESTRIÇÃO
-                // DE CALL TEMPORÁRIA. FUNCIONA EM TODAS AS CALLS.
                 if (
                     opcao === 'privar_call' ||
                     opcao === 'desprivar_call'
@@ -1020,8 +1012,6 @@ client.on('interactionCreate', async interaction => {
                     }
                 }
 
-                // OS OUTROS CONTROLES CONTINUAM LIMITADOS
-                // ÀS CALLS TEMPORÁRIAS, COMO ANTES.
                 if (
                     !ehCallTemporaria(canal) ||
                     !podeControlarCall(interaction, canal)
@@ -1241,7 +1231,6 @@ client.on('interactionCreate', async interaction => {
                 }
             }
 
-            // PRIVAR / LIBERAR QUALQUER CALL DE VOZ
             if (id === 'call_privada' || id === 'call_publica') {
                 const canal = obterCall(interaction);
 
@@ -1824,4 +1813,4 @@ if (!TOKEN) {
             erro
         );
     });
-        }
+    }
