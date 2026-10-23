@@ -672,19 +672,19 @@ function criarBotoesPublicacao(id) {
         new ButtonBuilder()
             .setCustomId(`pub_like_${id}`)
             .setLabel('Curtir')
-            .setEmoji('<a:a_coraopulante:1561585804286107708>')
+            .setEmoji('<a:pureza_h:1562608729336320093> ')
             .setStyle(ButtonStyle.Secondary),
 
         new ButtonBuilder()
             .setCustomId(`pub_comentar_${id}`)
             .setLabel('Comentar')
-            .setEmoji('<a:a_morceguinho:1561585818416582716>')
+            .setEmoji('<:kxv:1561583471841906791> ')
             .setStyle(ButtonStyle.Secondary),
 
         new ButtonBuilder()
             .setCustomId(`pub_compartilhar_${id}`)
             .setLabel('Compartilhar')
-            .setEmoji('<a:a_florgirando:1561585775106199562>')
+            .setEmoji('<a:pureza_h:1562608731521286205> ')
             .setStyle(ButtonStyle.Secondary)
     );
 
@@ -692,13 +692,12 @@ function criarBotoesPublicacao(id) {
         new ButtonBuilder()
             .setCustomId(`pub_detalhes_${id}`)
             .setLabel('Detalhes')
-            .setEmoji('<:a_cargoplug:1561585789501046924>')
+            .setEmoji('<a:pureza_h:1562211568719110316> ')
             .setStyle(ButtonStyle.Secondary)
     );
 
     return [linha1, linha2];
 }
-
 // ======================================================
 // PUBLICAÇÕES
 // ======================================================
@@ -1873,4 +1872,4 @@ if (!TOKEN) {
             erro
         );
     });
-    }
+}
