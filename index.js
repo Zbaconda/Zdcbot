@@ -39,6 +39,8 @@ const CARGO_BOOSTER = '1559367297053757551';
 const CANAL_PUBLICACOES_ID = '1561569037694275584';
 const CANAL_LIMPEZA_ID = '1559375230202290256';
 
+const BANNER_PAINEL_CALL = 'https://media.discordapp.net/attachments/1559056011375943784/1563610071886331994/file_0000000060b8820e9ce7fd5014b9b33a.png?ex=6ae03b1b&is=6adee99b&hm=89cc9ed84a2ef5f71ddaccaa52f5c6caff67303cb83988cc308da4f0907a89d5&=&format=webp&quality=lossless';
+
 const FUSO_HORARIO = 'America/Sao_Paulo';
 const TEMPO_EXCLUSAO_CALL_VAZIA = 10000;
 const INTERVALO_ATIVIDADE = 10 * 60 * 60 * 1000;
@@ -615,7 +617,8 @@ function criarPainelCall() {
             '🔒 **Privar:** restringir o acesso à call.\n' +
             '🔓 **Liberar:** permitir que todos entrem novamente.'
         )
-        .setColor(0x000000);
+        .setColor(0x000000)
+        .setImage(BANNER_PAINEL_CALL);
 
     const linha1 = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
