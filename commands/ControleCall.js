@@ -7,6 +7,8 @@ const {
     PermissionFlagsBits
 } = require('discord.js');
 
+const BANNER_PAINEL_CALL = 'https://media.discordapp.net/attachments/1559056011375943784/1563610071886331994/file_0000000060b8820e9ce7fd5014b9b33a.png?ex=6ae03b1b&is=6adee99b&hm=89cc9ed84a2ef5f71ddaccaa52f5c6caff67303cb83988cc308da4f0907a89d5&=&format=webp&quality=lossless';
+
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('controlecall')
@@ -43,7 +45,8 @@ module.exports = {
                 '• __Criar call, Lock e Unlock__: ~~sem espera~~.\n\n' +
                 'Utilize as ferramentas com responsabilidade! <:kxv:1561108869336530996>'
             )
-            .setColor(0x2b2d31);
+            .setColor(0x2b2d31)
+            .setImage(BANNER_PAINEL_CALL);
 
         const menu = new StringSelectMenuBuilder()
             .setCustomId('controle_call')
