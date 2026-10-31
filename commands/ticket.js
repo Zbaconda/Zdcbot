@@ -1,4 +1,3 @@
-
 const {
     SlashCommandBuilder,
     PermissionFlagsBits,
@@ -532,14 +531,16 @@ async function acaoAdmin(interaction, acao) {
             });
         }
 
-        await interaction.deferReply();
-
         try {
+            await interaction.deferReply({
+                flags: MessageFlags.Ephemeral
+            });
+
             dados.assumido = interaction.user.id;
             await atualizarTopic(canal, dados);
 
             await interaction.editReply({
-                content: `🙋 ${interaction.user} assumiu este ticket.`
+                content: `🙋 Você assumiu este ticket com sucesso!`
             });
 
             const logs = await interaction.guild.channels
@@ -571,9 +572,16 @@ async function acaoAdmin(interaction, acao) {
         } catch (erro) {
             console.error('Erro ao assumir ticket:', erro);
 
-            await interaction.editReply({
-                content: '❌ Não foi possível assumir o ticket. Verifique as permissões do bot.'
-            }).catch(console.error);
+            if (interaction.deferred || interaction.replied) {
+                await interaction.editReply({
+                    content: '❌ Não foi possível assumir o ticket. Verifique as permissões do bot.'
+                }).catch(console.error);
+            } else {
+                await interaction.reply({
+                    content: '❌ Não foi possível assumir o ticket.',
+                    flags: MessageFlags.Ephemeral
+                }).catch(console.error);
+            }
         }
 
         return;
@@ -589,14 +597,16 @@ async function acaoAdmin(interaction, acao) {
             });
         }
 
-        await interaction.deferReply();
-
         try {
+            await interaction.deferReply({
+                flags: MessageFlags.Ephemeral
+            });
+
             dados.resolvido = interaction.user.id;
             await atualizarTopic(canal, dados);
 
             await interaction.editReply({
-                content: `✅ ${interaction.user} marcou este ticket como resolvido. Um administrador ainda precisa encerrá-lo.`
+                content: '✅ Ticket marcado como resolvido com sucesso! Agora você pode encerrá-lo.'
             });
 
             const logs = await interaction.guild.channels
@@ -628,9 +638,16 @@ async function acaoAdmin(interaction, acao) {
         } catch (erro) {
             console.error('Erro ao marcar ticket como resolvido:', erro);
 
-            await interaction.editReply({
-                content: '❌ Não foi possível marcar o ticket como resolvido. Verifique as permissões do bot.'
-            }).catch(console.error);
+            if (interaction.deferred || interaction.replied) {
+                await interaction.editReply({
+                    content: '❌ Não foi possível marcar o ticket como resolvido. Verifique as permissões do bot.'
+                }).catch(console.error);
+            } else {
+                await interaction.reply({
+                    content: '❌ Não foi possível marcar o ticket como resolvido.',
+                    flags: MessageFlags.Ephemeral
+                }).catch(console.error);
+            }
         }
 
         return;
