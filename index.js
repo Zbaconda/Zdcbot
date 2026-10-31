@@ -947,6 +947,14 @@ client.on('messageCreate', async mensagem => {
 
 client.on('interactionCreate', async interaction => {
     try {
+        // SISTEMA DE TICKETS
+        const comandoTicket = client.commands.get('ticket');
+        if (
+            comandoTicket?.handleInteraction &&
+            await comandoTicket.handleInteraction(interaction, client)
+        ) {
+            return;
+        }
         // COMANDOS SLASH
         if (interaction.isChatInputCommand()) {
             const comando = client.commands.get(
