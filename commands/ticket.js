@@ -1,3 +1,4 @@
+
 const {
     SlashCommandBuilder,
     PermissionFlagsBits,
@@ -532,10 +533,12 @@ async function acaoAdmin(interaction, acao) {
             });
         }
 
+        await interaction.deferReply();
+
         dados.assumido = interaction.user.id;
         await atualizarTopic(canal, dados);
 
-        await interaction.reply({
+        await interaction.editReply({
             content: `🙋 ${interaction.user} assumiu este ticket.`
         });
 
@@ -576,10 +579,12 @@ async function acaoAdmin(interaction, acao) {
             });
         }
 
+        await interaction.deferReply();
+
         dados.resolvido = interaction.user.id;
         await atualizarTopic(canal, dados);
 
-        await interaction.reply({
+        await interaction.editReply({
             content: `✅ ${interaction.user} marcou este ticket como resolvido. Um administrador ainda precisa encerrá-lo.`
         });
 
