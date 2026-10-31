@@ -61,7 +61,6 @@ function textoPainel() {
 
 function criarPainelSuporte() {
     return new ContainerBuilder()
-        .setAccentColor(0x7137B8)
         .addTextDisplayComponents(
             new TextDisplayBuilder().setContent(textoPainel())
         )
@@ -89,7 +88,6 @@ function criarBotaoAbrir() {
 
 function criarPainelSelecao() {
     return new ContainerBuilder()
-        .setAccentColor(0x7137B8)
         .addTextDisplayComponents(
             new TextDisplayBuilder().setContent(
                 '# 🎫 Escolha a categoria do seu atendimento\n\n' +
@@ -180,7 +178,6 @@ function criarPainelAtendimento(chave) {
     };
 
     const painel = new ContainerBuilder()
-        .setAccentColor(0x7137B8)
         .addTextDisplayComponents(
             new TextDisplayBuilder().setContent(descricoes[chave])
         );
@@ -496,7 +493,7 @@ async function selecionarCategoria(interaction) {
     } catch (erro) {
         console.error('Erro ao selecionar categoria:', erro);
 
-        if (!interaction.replied) {
+        if (!interaction.replied && !interaction.deferred) {
             await interaction.reply({
                 content: '❌ Não consegui liberar o ticket. Confira as permissões do bot.',
                 flags: MessageFlags.Ephemeral
@@ -525,6 +522,8 @@ async function acaoAdmin(interaction, acao) {
         });
     }
 
+    // ASSUMIR TICKET
+
     if (acao === 'assumir') {
         if (dados.assumido) {
             return interaction.reply({
@@ -535,41 +534,52 @@ async function acaoAdmin(interaction, acao) {
 
         await interaction.deferReply();
 
-        dados.assumido = interaction.user.id;
-        await atualizarTopic(canal, dados);
+        try {
+            dados.assumido = interaction.user.id;
+            await atualizarTopic(canal, dados);
 
-        await interaction.editReply({
-            content: `🙋 ${interaction.user} assumiu este ticket.`
-        });
-
-        const logs = await interaction.guild.channels
-            .fetch(CANAL_LOGS_TICKETS)
-            .catch(() => null);
-
-        if (logs?.isTextBased()) {
-            await logs.send({
-                embeds: [
-                    new EmbedBuilder()
-                        .setColor(0x7137B8)
-                        .setTitle('🙋 Ticket assumido')
-                        .addFields(
-                            {
-                                name: 'Ticket',
-                                value: `${canal}`,
-                                inline: true
-                            },
-                            {
-                                name: 'Responsável',
-                                value: `${interaction.user} (${interaction.user.id})`
-                            }
-                        )
-                        .setTimestamp()
-                ]
+            await interaction.editReply({
+                content: `🙋 ${interaction.user} assumiu este ticket.`
             });
+
+            const logs = await interaction.guild.channels
+                .fetch(CANAL_LOGS_TICKETS)
+                .catch(() => null);
+
+            if (logs?.isTextBased()) {
+                await logs.send({
+                    embeds: [
+                        new EmbedBuilder()
+                            .setColor(0x7137B8)
+                            .setTitle('🙋 Ticket assumido')
+                            .addFields(
+                                {
+                                    name: 'Ticket',
+                                    value: `${canal}`,
+                                    inline: true
+                                },
+                                {
+                                    name: 'Responsável',
+                                    value: `${interaction.user} (${interaction.user.id})`
+                                }
+                            )
+                            .setTimestamp()
+                    ]
+                });
+            }
+
+        } catch (erro) {
+            console.error('Erro ao assumir ticket:', erro);
+
+            await interaction.editReply({
+                content: '❌ Não foi possível assumir o ticket. Verifique as permissões do bot.'
+            }).catch(console.error);
         }
 
         return;
     }
+
+    // MARCAR COMO RESOLVIDO
 
     if (acao === 'resolvido') {
         if (dados.resolvido) {
@@ -581,41 +591,52 @@ async function acaoAdmin(interaction, acao) {
 
         await interaction.deferReply();
 
-        dados.resolvido = interaction.user.id;
-        await atualizarTopic(canal, dados);
+        try {
+            dados.resolvido = interaction.user.id;
+            await atualizarTopic(canal, dados);
 
-        await interaction.editReply({
-            content: `✅ ${interaction.user} marcou este ticket como resolvido. Um administrador ainda precisa encerrá-lo.`
-        });
-
-        const logs = await interaction.guild.channels
-            .fetch(CANAL_LOGS_TICKETS)
-            .catch(() => null);
-
-        if (logs?.isTextBased()) {
-            await logs.send({
-                embeds: [
-                    new EmbedBuilder()
-                        .setColor(0x57F287)
-                        .setTitle('✅ Ticket marcado como resolvido')
-                        .addFields(
-                            {
-                                name: 'Ticket',
-                                value: `${canal}`,
-                                inline: true
-                            },
-                            {
-                                name: 'Resolvido por',
-                                value: `${interaction.user} (${interaction.user.id})`
-                            }
-                        )
-                        .setTimestamp()
-                ]
+            await interaction.editReply({
+                content: `✅ ${interaction.user} marcou este ticket como resolvido. Um administrador ainda precisa encerrá-lo.`
             });
+
+            const logs = await interaction.guild.channels
+                .fetch(CANAL_LOGS_TICKETS)
+                .catch(() => null);
+
+            if (logs?.isTextBased()) {
+                await logs.send({
+                    embeds: [
+                        new EmbedBuilder()
+                            .setColor(0x57F287)
+                            .setTitle('✅ Ticket marcado como resolvido')
+                            .addFields(
+                                {
+                                    name: 'Ticket',
+                                    value: `${canal}`,
+                                    inline: true
+                                },
+                                {
+                                    name: 'Resolvido por',
+                                    value: `${interaction.user} (${interaction.user.id})`
+                                }
+                            )
+                            .setTimestamp()
+                    ]
+                });
+            }
+
+        } catch (erro) {
+            console.error('Erro ao marcar ticket como resolvido:', erro);
+
+            await interaction.editReply({
+                content: '❌ Não foi possível marcar o ticket como resolvido. Verifique as permissões do bot.'
+            }).catch(console.error);
         }
 
         return;
     }
+
+    // ENCERRAR TICKET
 
     if (acao === 'encerrar') {
         if (!dados.resolvido) {
