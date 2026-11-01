@@ -20,7 +20,7 @@ const CANAL_LOGS_TICKETS = '1559889239192240128';
 const CARGO_ADMIN_TICKETS = '1561597992123768933';
 const CATEGORIA_TICKETS_ID = '1565842106508124180';
 
-const BANNER_SUPORTE = 'https://media.discordapp.net/attachments/1559056011375943784/1563610129893425222/file_00000000e724820e8223219b519005ff.png?ex=6ae03b29&is=6adee9a9&hm=f55a74f77676b8b748a134340e59fbd57792069df4a2285ab33abf542ef9cf45&=&format=webp&quality=lossless';
+const BANNER_SUPORTE = 'https://media.discordapp.net/attachments/1559056011375943784/1563610140286918838/file_00000000797c820ebdcb865e2be3398e.png?ex=6ae6d2ab&is=6ae5812b&hm=1edd0d07c534c71539ffe1c754a36a0cfe71603fd2af8732f8eff04c80da3032&=&format=webp&quality=lossless';
 
 const CATEGORIAS = {
     parcerias: {
@@ -121,59 +121,53 @@ function criarMenuCategoria() {
 
 function criarPainelAtendimento(chave) {
     const descricoes = {
+        parcerias:
+            `# <:emoji_233:1566168876251877600> PARCERIAS — CENTRAL DE ATENDIMENTO\n\n` +
+            `Tem interesse em fazer uma parceria com a **Zodíaco**? Este espaço é destinado ao recebimento de propostas de outras comunidades.\n\n` +
+            `### Para solicitar uma parceria, seu servidor precisa:\n` +
+            `ㅤ\n` +
+            `- Ter, no mínimo, 100 membros.\n` +
+            `- Manter uma comunidade ativa.\n` +
+            `- Não possuir panelinhas ou grupos que prejudiquem a interação e a convivência entre os membros.\n` +
+            `- Disponibilizar um convite permanente, sem prazo de expiração.\n\n` +
+            `**Importante:** Antes de enviar sua proposta, confira se todos os requisitos estão sendo cumpridos e se o convite está funcionando. Nossa equipe irá analisar a solicitação e retornar com uma resposta. <a:zodiaco:1565855589009981530>\n\n` +
+            `-# <:snake_black:1566146728653103104> O envio da proposta não garante aprovação. A decisão fica a critério da equipe responsável. Suas informações serão tratadas com sigilo.`,
+
         duvidas:
-            `# ❓ DÚVIDAS — CENTRAL DE ATENDIMENTO\n\n` +
-            `Seja bem-vindo(a) ao atendimento de dúvidas do Zodíaco!\n\n` +
-            `Este espaço foi criado para ajudar você com qualquer dúvida relacionada ao funcionamento do servidor.\n\n` +
-            `**Você pode utilizar este atendimento para:**\n` +
-            `> • Dúvidas sobre as regras do servidor.\n` +
-            `> • Informações sobre canais e cargos.\n` +
-            `> • Dúvidas sobre eventos e atividades.\n` +
-            `> • Ajuda com comandos e funções do servidor.\n` +
-            `> • Problemas ou dificuldades dentro da comunidade.\n\n` +
-            `**Para facilitar o atendimento, informe:**\n` +
-            `> • Qual é a sua dúvida ou dificuldade.\n` +
-            `> • Em qual canal ou situação o problema aconteceu.\n` +
-            `> • Qual comando ou função você estava tentando utilizar, caso necessário.\n` +
-            `> • Prints ou mensagens de erro, se ajudarem a explicar a situação.\n\n` +
-            `Nossa equipe estará disponível para orientar você. Procure explicar sua dúvida com clareza e aguarde uma resposta.\n\n` +
-            `-# 🔒 Este é um canal privado de atendimento.`,
+            `# <a:emoji_232:1566158275840581642> DÚVIDAS — CENTRAL DE ATENDIMENTO\n\n` +
+            `Precisa de ajuda? Este espaço foi criado para esclarecer dúvidas e orientar você sobre o funcionamento da **Zodíaco**.\n\n` +
+            `### Você pode utilizar este atendimento para:\n` +
+            `ㅤ\n` +
+            `> <a:whitset40:1547273099693527050> __Dúvidas sobre regras, canais e cargos__.\n\n` +
+            `> <a:whitset40:1547273099693527050> __Informações sobre eventos e atividades__.\n\n` +
+            `> <a:whitset40:1547273099693527050> __Ajuda com comandos e funções dos bots__.\n\n` +
+            `> <a:whitset40:1547273099693527050> __Problemas ou dificuldades no servidor__.\n\n` +
+            `> <a:whitset40:1547273099693527050> __Outras questões relacionadas à comunidade__.\n\n` +
+            `### Para facilitar o atendimento, explique:\n` +
+            `ㅤ\n` +
+            `- <a:zodiaco:1566146710978170991> __Qual é a sua dúvida ou dificuldade__.\n\n` +
+            `- <a:zodiaco:1566146710978170991> __Em qual canal ou situação aconteceu__.\n\n` +
+            `- <a:zodiaco:1566146710978170991> __Prints ou mensagens de erro, caso necessário__.\n\n` +
+            `*Nossa equipe irá orientar você da melhor forma possível. Explique sua situação com clareza e aguarde o retorno de um responsável.*\n\n` +
+            `-# <:snake_black:1566146728653103104> Este é um atendimento privado. Suas informações serão tratadas com sigilo. Aguarde a equipe responder.`,
 
         denuncias:
-            `# 🚨 DENÚNCIAS — CENTRAL DE ATENDIMENTO\n\n` +
-            `Este espaço é destinado ao recebimento de denúncias relacionadas a comportamentos inadequados ou possíveis violações das regras do Zodíaco.\n\n` +
-            `**Você pode denunciar situações como:**\n` +
-            `> • Desrespeito ou assédio a outros membros.\n` +
-            `> • Ofensas, ameaças ou provocações.\n` +
-            `> • Divulgação de conteúdo proibido.\n` +
-            `> • Descumprimento das regras do servidor.\n` +
-            `> • Outras situações que precisem da atenção da equipe.\n\n` +
-            `**Para que a equipe possa analisar sua denúncia, informe:**\n` +
-            `> • Quem está envolvido na situação.\n` +
-            `> • O que aconteceu e como ocorreu.\n` +
-            `> • Em qual canal ou contexto aconteceu.\n` +
-            `> • A data ou o horário aproximado.\n` +
-            `> • Prints, links ou outras evidências disponíveis.\n\n` +
-            `**Importante:**\n` +
-            `> Mantenha a descrição verdadeira e objetiva. Não utilize este espaço para denúncias falsas ou conflitos pessoais. As informações serão tratadas com discrição pela equipe responsável.\n\n` +
-            `-# 🔒 Este é um canal privado de atendimento.`,
-
-        parcerias:
-            `# 🤝 PARCERIAS — CENTRAL DE ATENDIMENTO\n\n` +
-            `Seja bem-vindo(a) ao setor de parcerias do Zodíaco!\n\n` +
-            `Este espaço é destinado a pessoas e comunidades interessadas em apresentar propostas de parceria com o nosso servidor.\n\n` +
-            `**Para apresentar sua proposta, informe:**\n` +
-            `> • Nome do servidor ou projeto.\n` +
-            `> • Tema ou objetivo da comunidade.\n` +
-            `> • Convite válido do Discord.\n` +
-            `> • Quantidade aproximada de membros.\n` +
-            `> • Nível de atividade da comunidade.\n` +
-            `> • O que sua comunidade oferece e quais são os benefícios da parceria.\n` +
-            `> • Sua proposta e condições, caso existam.\n\n` +
-            `**Antes de enviar:**\n` +
-            `> Certifique-se de que as informações estão corretas e que o convite está funcionando. Nossa equipe irá analisar a proposta e verificar se ela está de acordo com os critérios do servidor.\n\n` +
-            `O envio de uma proposta não garante sua aprovação. A decisão será tomada pela equipe responsável após a análise.\n\n` +
-            `-# 🔒 Este é um canal privado de atendimento.`
+            `# <a:zodiaco:1561119760383606905> DENÚNCIAS — CENTRAL DE ATENDIMENTO\n\n` +
+            `Este espaço é destinado ao registro de denúncias sobre comportamentos inadequados ou situações que violem as regras da **Zodíaco**.\n\n` +
+            `### Você pode denunciar:\n` +
+            `ㅤ\n` +
+            `> <:zodiaco:1559627194903568464> __Desrespeito, assédio ou ofensas a membros__.\n\n` +
+            `> <:zodiaco:1559627194903568464> __Ameaças, provocações ou conflitos__.\n\n` +
+            `> <:zodiaco:1559627194903568464> __Divulgação de conteúdos proibidos__.\n\n` +
+            `> <:zodiaco:1559627194903568464> __Descumprimento das regras do servidor__.\n\n` +
+            `> <:zodiaco:1559627194903568464> __Outras situações que mereçam atenção da equipe__.\n\n` +
+            `### Para realizar sua denúncia, informe:\n` +
+            `ㅤ\n` +
+            `- <:zodiaco:1559627194903568464> __Quem está envolvido e o que aconteceu__.\n\n` +
+            `- <:zodiaco:1559627194903568464> __Onde e quando ocorreu a situação__.\n\n` +
+            `- <:zodiaco:1559627194903568464> __Prints, links ou outras evidências, se disponíveis__.\n\n` +
+            `**Importante**: *Seja claro e verdadeiro ao relatar o ocorrido. Evite denúncias falsas ou motivadas por conflitos pessoais. Todas as informações serão analisadas com discrição pela equipe responsável.*\n\n` +
+            `-# <:snake_black:1566146728653103104> Este é um atendimento privado. Suas informações serão tratadas com sigilo.`
     };
 
     const painel = new ContainerBuilder()
@@ -183,20 +177,8 @@ function criarPainelAtendimento(chave) {
 
     const botoes = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-            .setCustomId('ticket:assumir')
-            .setLabel('Assumir ticket')
-            .setEmoji('🙋')
-            .setStyle(ButtonStyle.Primary),
-
-        new ButtonBuilder()
-            .setCustomId('ticket:resolvido')
-            .setLabel('Resolvido')
-            .setEmoji('✅')
-            .setStyle(ButtonStyle.Success),
-
-        new ButtonBuilder()
             .setCustomId('ticket:encerrar')
-            .setLabel('Encerrar ticket')
+            .setLabel('Fechar ticket')
             .setEmoji('🔒')
             .setStyle(ButtonStyle.Secondary)
     );
@@ -501,9 +483,9 @@ async function selecionarCategoria(interaction) {
     }
 }
 
-// AÇÕES DA EQUIPE
+// AÇÃO DE FECHAR TICKET
 
-async function acaoAdmin(interaction, acao) {
+async function acaoAdmin(interaction) {
     const canal = interaction.channel;
     const dados = lerDados(canal);
 
@@ -516,300 +498,147 @@ async function acaoAdmin(interaction, acao) {
 
     if (!ehAdmin(interaction)) {
         return interaction.reply({
-            content: '⛔ Somente administradores autorizados podem usar estas opções.',
+            content: '⛔ Somente administradores autorizados podem fechar tickets.',
             flags: MessageFlags.Ephemeral
         });
     }
 
-    // ASSUMIR TICKET
+    await interaction.deferReply({
+        flags: MessageFlags.Ephemeral
+    });
 
-    if (acao === 'assumir') {
-        if (dados.assumido) {
-            return interaction.reply({
-                content: `⚠️ Este ticket já foi assumido por <@${dados.assumido}>.`,
-                flags: MessageFlags.Ephemeral
+    try {
+        const mensagens = [];
+        let before;
+
+        for (let pagina = 0; pagina < 10; pagina++) {
+            const lote = await canal.messages.fetch({
+                limit: 100,
+                ...(before ? { before } : {})
             });
+
+            if (!lote.size) break;
+
+            mensagens.push(...lote.values());
+            before = lote.last().id;
+
+            if (lote.size < 100) break;
         }
 
-        try {
-            await interaction.deferReply({
-                flags: MessageFlags.Ephemeral
+        mensagens.sort(
+            (a, b) => a.createdTimestamp - b.createdTimestamp
+        );
+
+        const linhas = mensagens.map(mensagem => {
+            const quando = new Date(
+                mensagem.createdTimestamp
+            ).toLocaleString('pt-BR', {
+                timeZone: 'America/Sao_Paulo'
             });
 
-            dados.assumido = interaction.user.id;
-            await atualizarTopic(canal, dados);
+            const anexos = [
+                ...mensagem.attachments.values()
+            ].map(anexo =>
+                `[Anexo: ${anexo.name || 'arquivo'}] ${anexo.url}`
+            ).join('\n');
 
-            await interaction.editReply({
-                content: `🙋 Você assumiu este ticket com sucesso!`
-            });
-
-            const logs = await interaction.guild.channels
-                .fetch(CANAL_LOGS_TICKETS)
-                .catch(() => null);
-
-            if (logs?.isTextBased()) {
-                await logs.send({
-                    embeds: [
-                        new EmbedBuilder()
-                            .setColor(0x7137B8)
-                            .setTitle('🙋 Ticket assumido')
-                            .addFields(
-                                {
-                                    name: 'Ticket',
-                                    value: `${canal}`,
-                                    inline: true
-                                },
-                                {
-                                    name: 'Responsável',
-                                    value: `${interaction.user} (${interaction.user.id})`
-                                }
-                            )
-                            .setTimestamp()
-                    ]
-                });
-            }
-
-        } catch (erro) {
-            console.error('Erro ao assumir ticket:', erro);
-
-            if (interaction.deferred || interaction.replied) {
-                await interaction.editReply({
-                    content: '❌ Não foi possível assumir o ticket. Verifique as permissões do bot.'
-                }).catch(console.error);
-            } else {
-                await interaction.reply({
-                    content: '❌ Não foi possível assumir o ticket.',
-                    flags: MessageFlags.Ephemeral
-                }).catch(console.error);
-            }
-        }
-
-        return;
-    }
-
-    // MARCAR COMO RESOLVIDO
-
-    if (acao === 'resolvido') {
-        if (dados.resolvido) {
-            return interaction.reply({
-                content: `✅ Este ticket já foi marcado como resolvido por <@${dados.resolvido}>.`,
-                flags: MessageFlags.Ephemeral
-            });
-        }
-
-        try {
-            await interaction.deferReply({
-                flags: MessageFlags.Ephemeral
-            });
-
-            dados.resolvido = interaction.user.id;
-            await atualizarTopic(canal, dados);
-
-            await interaction.editReply({
-                content: '✅ Ticket marcado como resolvido com sucesso! Agora você pode encerrá-lo.'
-            });
-
-            const logs = await interaction.guild.channels
-                .fetch(CANAL_LOGS_TICKETS)
-                .catch(() => null);
-
-            if (logs?.isTextBased()) {
-                await logs.send({
-                    embeds: [
-                        new EmbedBuilder()
-                            .setColor(0x57F287)
-                            .setTitle('✅ Ticket marcado como resolvido')
-                            .addFields(
-                                {
-                                    name: 'Ticket',
-                                    value: `${canal}`,
-                                    inline: true
-                                },
-                                {
-                                    name: 'Resolvido por',
-                                    value: `${interaction.user} (${interaction.user.id})`
-                                }
-                            )
-                            .setTimestamp()
-                    ]
-                });
-            }
-
-        } catch (erro) {
-            console.error('Erro ao marcar ticket como resolvido:', erro);
-
-            if (interaction.deferred || interaction.replied) {
-                await interaction.editReply({
-                    content: '❌ Não foi possível marcar o ticket como resolvido. Verifique as permissões do bot.'
-                }).catch(console.error);
-            } else {
-                await interaction.reply({
-                    content: '❌ Não foi possível marcar o ticket como resolvido.',
-                    flags: MessageFlags.Ephemeral
-                }).catch(console.error);
-            }
-        }
-
-        return;
-    }
-
-    // ENCERRAR TICKET
-
-    if (acao === 'encerrar') {
-        if (!dados.resolvido) {
-            return interaction.reply({
-                content: '⚠️ Antes de encerrar, um administrador precisa marcar o ticket como **Resolvido**.',
-                flags: MessageFlags.Ephemeral
-            });
-        }
-
-        await interaction.deferReply({
-            flags: MessageFlags.Ephemeral
-        });
-
-        try {
-            const mensagens = [];
-            let before;
-
-            for (let pagina = 0; pagina < 10; pagina++) {
-                const lote = await canal.messages.fetch({
-                    limit: 100,
-                    ...(before ? { before } : {})
-                });
-
-                if (!lote.size) break;
-
-                mensagens.push(...lote.values());
-                before = lote.last().id;
-
-                if (lote.size < 100) break;
-            }
-
-            mensagens.sort(
-                (a, b) => a.createdTimestamp - b.createdTimestamp
+            return (
+                `[${quando}] ${mensagem.author.tag} (${mensagem.author.id}):\n` +
+                `${mensagem.content || ''}` +
+                `${anexos ? '\n' + anexos : ''}`
             );
+        });
 
-            const linhas = mensagens.map(mensagem => {
-                const quando = new Date(
-                    mensagem.createdTimestamp
-                ).toLocaleString('pt-BR', {
-                    timeZone: 'America/Sao_Paulo'
-                });
+        const transcript = [
+            `Transcrição do ticket ${canal.name}`,
+            `Canal: ${canal.id}`,
+            `Autor: ${dados.owner}`,
+            `Categoria: ${CATEGORIAS[dados.categoria]?.label || dados.categoria}`,
+            `Encerrado por: ${interaction.user.id}`,
+            '',
+            ...linhas
+        ].join('\n\n');
 
-                const anexos = [
-                    ...mensagem.attachments.values()
-                ].map(anexo =>
-                    `[Anexo: ${anexo.name || 'arquivo'}] ${anexo.url}`
-                ).join('\n');
+        const arquivo = new AttachmentBuilder(
+            Buffer.from(transcript, 'utf8'),
+            {
+                name: `transcricao-${canal.id}.txt`
+            }
+        );
 
-                return (
-                    `[${quando}] ${mensagem.author.tag} (${mensagem.author.id}):\n` +
-                    `${mensagem.content || ''}` +
-                    `${anexos ? '\n' + anexos : ''}`
-                );
-            });
+        const aberto = new Date(dados.criado);
+        const fechado = new Date();
 
-            const transcript = [
-                `Transcrição do ticket ${canal.name}`,
-                `Canal: ${canal.id}`,
-                `Autor: ${dados.owner}`,
-                `Categoria: ${CATEGORIAS[dados.categoria]?.label || dados.categoria}`,
-                `Assumido por: ${dados.assumido || 'Não assumido'}`,
-                `Resolvido por: ${dados.resolvido}`,
-                `Encerrado por: ${interaction.user.id}`,
-                '',
-                ...linhas
-            ].join('\n\n');
-
-            const arquivo = new AttachmentBuilder(
-                Buffer.from(transcript, 'utf8'),
+        const embed = new EmbedBuilder()
+            .setColor(0x7137B8)
+            .setTitle('🔒 Ticket encerrado')
+            .setDescription('Atendimento encerrado pela equipe.')
+            .addFields(
                 {
-                    name: `transcricao-${canal.id}.txt`
+                    name: 'Ticket',
+                    value: `#${canal.name} (${canal.id})`
+                },
+                {
+                    name: 'Aberto por',
+                    value: `<@${dados.owner}>`,
+                    inline: true
+                },
+                {
+                    name: 'Categoria',
+                    value: CATEGORIAS[dados.categoria]?.label || dados.categoria,
+                    inline: true
+                },
+                {
+                    name: 'Encerrado por',
+                    value: `${interaction.user} (${interaction.user.id})`,
+                    inline: true
+                },
+                {
+                    name: 'Aberto em',
+                    value: `<t:${Math.floor(aberto.getTime() / 1000)}:F>`
+                },
+                {
+                    name: 'Encerrado em',
+                    value: `<t:${Math.floor(fechado.getTime() / 1000)}:F>`
+                },
+                {
+                    name: 'Mensagens na transcrição',
+                    value: String(mensagens.length),
+                    inline: true
                 }
-            );
+            )
+            .setTimestamp(fechado);
 
-            const aberto = new Date(dados.criado);
-            const fechado = new Date();
+        await enviarLog(
+            interaction.guild,
+            embed,
+            [arquivo]
+        );
 
-            const embed = new EmbedBuilder()
-                .setColor(0x7137B8)
-                .setTitle('🔒 Ticket encerrado')
-                .setDescription('Atendimento marcado como resolvido e encerrado.')
-                .addFields(
-                    {
-                        name: 'Ticket',
-                        value: `#${canal.name} (${canal.id})`
-                    },
-                    {
-                        name: 'Aberto por',
-                        value: `<@${dados.owner}>`,
-                        inline: true
-                    },
-                    {
-                        name: 'Categoria',
-                        value: CATEGORIAS[dados.categoria]?.label || dados.categoria,
-                        inline: true
-                    },
-                    {
-                        name: 'Assumido por',
-                        value: dados.assumido ? `<@${dados.assumido}>` : 'Não assumido',
-                        inline: true
-                    },
-                    {
-                        name: 'Resolvido por',
-                        value: `<@${dados.resolvido}>`,
-                        inline: true
-                    },
-                    {
-                        name: 'Encerrado por',
-                        value: `${interaction.user} (${interaction.user.id})`,
-                        inline: true
-                    },
-                    {
-                        name: 'Aberto em',
-                        value: `<t:${Math.floor(aberto.getTime() / 1000)}:F>`
-                    },
-                    {
-                        name: 'Encerrado em',
-                        value: `<t:${Math.floor(fechado.getTime() / 1000)}:F>`
-                    },
-                    {
-                        name: 'Mensagens na transcrição',
-                        value: String(mensagens.length),
-                        inline: true
-                    }
-                )
-                .setTimestamp(fechado);
+        await interaction.editReply({
+            content: '✅ Ticket encerrado. A transcrição e todas as informações foram enviadas aos logs. O canal será removido em 5 segundos.'
+        });
 
-            await enviarLog(
-                interaction.guild,
-                embed,
-                [arquivo]
-            );
+        await canal.send(
+            '🔒 Ticket encerrado por um administrador. Este canal será removido em instantes.'
+        );
 
-            await interaction.editReply({
-                content: '✅ Ticket encerrado. A transcrição e todas as informações foram enviadas aos logs. O canal será removido em 5 segundos.'
-            });
+        setTimeout(() => {
+            canal.delete(
+                'Ticket encerrado; transcrição registrada.'
+            ).catch(console.error);
+        }, 5000);
 
-            await canal.send(
-                '🔒 Ticket encerrado por um administrador. Este canal será removido em instantes.'
-            );
+    } catch (erro) {
+        console.error('Erro ao encerrar ticket:', erro);
 
-            setTimeout(() => {
-                canal.delete(
-                    'Ticket resolvido e encerrado; transcrição registrada.'
-                ).catch(console.error);
-            }, 5000);
-
-        } catch (erro) {
-            console.error('Erro ao encerrar ticket:', erro);
-
-            await interaction.editReply({
-                content: '❌ Não consegui encerrar. O canal foi mantido para evitar perda do histórico.'
-            });
-        }
+        await interaction.editReply({
+            content: '❌ Não consegui encerrar. O canal foi mantido para evitar perda do histórico.'
+        });
     }
 }
+
+// COMANDO E INTERAÇÕES
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -837,9 +666,7 @@ module.exports = {
         if (interaction.isButton()) {
             const acoes = {
                 'ticket:abrir': () => criarTicket(interaction, client),
-                'ticket:assumir': () => acaoAdmin(interaction, 'assumir'),
-                'ticket:resolvido': () => acaoAdmin(interaction, 'resolvido'),
-                'ticket:encerrar': () => acaoAdmin(interaction, 'encerrar')
+                'ticket:encerrar': () => acaoAdmin(interaction)
             };
 
             const executar = acoes[interaction.customId];
