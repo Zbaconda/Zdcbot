@@ -675,19 +675,19 @@ function criarBotoesPublicacao(id) {
         new ButtonBuilder()
             .setCustomId(`pub_like_${id}`)
             .setLabel('Curtir')
-            .setEmoji('<a:pureza_h:1562608729336320093> ')
+            .setEmoji('<a:pureza_h:1562608729336320093>')
             .setStyle(ButtonStyle.Secondary),
 
         new ButtonBuilder()
             .setCustomId(`pub_comentar_${id}`)
             .setLabel('Comentar')
-            .setEmoji('<:kxv:1561583471841906791> ')
+            .setEmoji('<:kxv:1561583471841906791>')
             .setStyle(ButtonStyle.Secondary),
 
         new ButtonBuilder()
             .setCustomId(`pub_compartilhar_${id}`)
             .setLabel('Compartilhar')
-            .setEmoji('<a:pureza_h:1562608731521286205> ')
+            .setEmoji('<a:pureza_h:1562608731521286205>')
             .setStyle(ButtonStyle.Secondary)
     );
 
@@ -695,7 +695,7 @@ function criarBotoesPublicacao(id) {
         new ButtonBuilder()
             .setCustomId(`pub_detalhes_${id}`)
             .setLabel('Detalhes')
-            .setEmoji('<a:pureza_h:1562211568719110316> ')
+            .setEmoji('<:zodiaco:1562608727700545546>')
             .setStyle(ButtonStyle.Secondary)
     );
 
