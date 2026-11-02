@@ -191,25 +191,38 @@ function obterPerfil(id) {
         money: 0,
         xp: 0,
         xpNecessario: 500,
+
+        // Rank permanece independente.
         rank: '',
+
         vip: '',
+
+        // Reputação antiga é preservada.
         reputacao: 0,
+
+        // Novo contador independente.
         advertencias: 0,
+
         badges: [],
         parceiro: '',
         banner: '',
         descricao: '',
         tema: 'branco',
+
         crop: {
             x: 0,
             y: 0,
             zoom: 1
         },
+
         ...(perfis[id] || {})
     };
 
     // Atualiza o limite antigo de XP.
-    if (!perfil.xpNecessario || perfil.xpNecessario === 200) {
+    if (
+        !perfil.xpNecessario ||
+        perfil.xpNecessario === 200
+    ) {
         perfil.xpNecessario = 500;
     }
 
@@ -217,12 +230,26 @@ function obterPerfil(id) {
         perfil.advertencias = 0;
     }
 
+    if (perfil.reputacao == null) {
+        perfil.reputacao = 0;
+    }
+
+    if (!perfil.crop) {
+        perfil.crop = {
+            x: 0,
+            y: 0,
+            zoom: 1
+        };
+    }
+
     return perfil;
 }
 
 function salvarPerfil(id, perfil) {
     const perfis = lerPerfis();
+
     perfis[id] = perfil;
+
     salvarPerfis(perfis);
 }
 
@@ -232,7 +259,15 @@ function salvarPerfil(id, perfil) {
 
 function arredondar(ctx, x, y, largura, altura, raio) {
     ctx.beginPath();
-    ctx.roundRect(x, y, largura, altura, raio);
+
+    ctx.roundRect(
+        x,
+        y,
+        largura,
+        altura,
+        raio
+    );
+
     ctx.closePath();
 }
 
@@ -258,10 +293,13 @@ function desenharTexto(
 
 function desenharEmoji(ctx, emoji, x, y, tamanho) {
     ctx.save();
+
     ctx.font = `${tamanho}px Arial`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+
     ctx.fillText(emoji, x, y);
+
     ctx.restore();
 }
 
@@ -325,10 +363,8 @@ function desenharModelo(ctx, tema) {
 // INDICADOR DE BANNER
 // ==========================================
 
-function desenharIndicadorBanner(ctx, tema) {
+function desenharIndicadorBanner(ctx) {
     ctx.save();
-
-    // Fundo discreto para indicar onde colocar o banner.
 
     ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
 
@@ -614,9 +650,10 @@ function desenharNome(ctx, user, tema) {
 
     const nome = user.globalName || user.username;
 
+    let tamanho = 48;
+
     ctx.save();
 
-    let tamanho = 48;
     ctx.font = `bold ${tamanho}px Arial`;
 
     while (
@@ -648,9 +685,10 @@ function desenharNome(ctx, user, tema) {
 function desenharDescricao(ctx, perfil, tema) {
     const descricao = perfil.descricao || 'Sem descrição...';
 
+    let tamanho = 34;
+
     ctx.save();
 
-    let tamanho = 34;
     ctx.font = `bold ${tamanho}px Arial`;
 
     while (
@@ -720,8 +758,6 @@ function desenharCartao(
     const largura = CARTOES.largura;
     const altura = CARTOES.altura;
 
-    // FUNDO DO CARTÃO
-
     ctx.fillStyle = tema.card;
 
     arredondar(
@@ -735,16 +771,12 @@ function desenharCartao(
 
     ctx.fill();
 
-    // EMOJI
-
     desenharIcone(
         ctx,
         tipo,
         x,
         y + 11
     );
-
-    // TEXTO
 
     const textoX = x + 100;
 
@@ -812,10 +844,6 @@ function desenharPainel(ctx, perfil, member, tema) {
     const advertencias = Number(perfil.advertencias) || 0;
 
     const estadoCivil = obterEstadoCivil(member);
-
-    const parceiro = perfil.parceiro || 'Não informado';
-
-    // VIP
 
     let vip = 'Sem VIP';
 
@@ -909,12 +937,74 @@ async function gerarImagem(user, perfil, member = null) {
                 erro
             );
 
-            desenharIndicadorBanner(ctx, tema);
+            desenharIndicadorBanner(ctx);
         }
     } else {
-        desenharIndicadorBanner(ctx, tema);
+        desenharIndicadorBanner(ctx);
     }
 
     // AVATAR
 
-    await desenhar
+    await desenharAvatar(ctx, user);
+
+    // DESCRIÇÃO
+
+    desenharDescricao(
+        ctx,
+        perfil,
+        tema
+    );
+
+    // INFORMAÇÕES
+
+    desenharPainel(
+        ctx,
+        perfil,
+        member,
+        tema
+    );
+
+    // NOME
+
+    desenharNome(
+        ctx,
+        user,
+        tema
+    );
+
+    return canvas.toBuffer('image/png');
+}
+
+// ==========================================
+// BOTÕES DE ENQUADRAMENTO
+// ==========================================
+
+function criarBotoesCrop(usuarioId) {
+    const prefixo = `perfil_crop_${usuarioId}_`;
+
+    return [
+        new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`${prefixo}cima`)
+                .setLabel('↑')
+                .setStyle(ButtonStyle.Secondary),
+
+            new ButtonBuilder()
+                .setCustomId(`${prefixo}esquerda`)
+                .setLabel('←')
+                .setStyle(ButtonStyle.Secondary),
+
+            new ButtonBuilder()
+                .setCustomId(`${prefixo}baixo`)
+                .setLabel('↓')
+                .setStyle(ButtonStyle.Secondary),
+
+            new ButtonBuilder()
+                .setCustomId(`${prefixo}direita`)
+                .setLabel('→')
+                .setStyle(ButtonStyle.Secondary),
+
+            new ButtonBuilder()
+                .setCustomId(`${prefixo}menos`)
+                .setLabel('−')
+               
