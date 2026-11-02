@@ -11,24 +11,35 @@ const {
   MessageFlags
 } = require('discord.js');
 
-const { createCanvas, loadImage } = require('@napi-rs/canvas');
+const {
+  createCanvas,
+  loadImage
+} = require('@napi-rs/canvas');
+
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
+
+// ==========================================
+// PASTAS E ARQUIVOS
+// ==========================================
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
+const BANNERS_DIR = path.join(DATA_DIR, 'banners');
 const FILE = path.join(DATA_DIR, 'perfis.json');
 
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-}
+const MAX_BANNER_SIZE = 8 * 1024 * 1024;
+
+fs.mkdirSync(DATA_DIR, { recursive: true });
+fs.mkdirSync(BANNERS_DIR, { recursive: true });
 
 if (!fs.existsSync(FILE)) {
   fs.writeFileSync(FILE, '{}', 'utf8');
 }
 
-// ==============================
-// SISTEMA DE DADOS
-// ==============================
+// ==========================================
+// BANCO DE DADOS
+// ==========================================
 
 function lerPerfis() {
   try {
@@ -40,7 +51,11 @@ function lerPerfis() {
 }
 
 function salvarPerfis(data) {
-  fs.writeFileSync(FILE, JSON.stringify(data, null, 2), 'utf8');
+  fs.writeFileSync(
+    FILE,
+    JSON.stringify(data, null, 2),
+    'utf8'
+  );
 }
 
 function arredondar(ctx, x, y, w, h, r) {
@@ -49,44 +64,118 @@ function arredondar(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-// ==============================
-// CARREGAR BANNER
-// ==============================
+// ==========================================
+// BAIXAR E SALVAR BANNER
+// ==========================================
 
-async function carregarBanner(url) {
+async function baixarESalvarBanner(url) {
   const resposta = await fetch(url, {
-    signal: AbortSignal.timeout(15000)
+    signal: AbortSignal.timeout(20000)
   });
 
   if (!resposta.ok) {
-    throw new Error(`Erro ao baixar imagem: ${resposta.status}`);
+    throw new Error(
+      `Não foi possível baixar a imagem: HTTP ${resposta.status}`
+    );
   }
 
-  const tipo = resposta.headers.get('content-type') || '';
+  const tipo = (
+    resposta.headers.get('content-type') || ''
+  ).split(';')[0].trim().toLowerCase();
 
-  if (!tipo.toLowerCase().startsWith('image/')) {
-    throw new Error('O link não aponta diretamente para uma imagem.');
+  const extensoes = {
+    'image/png': '.png',
+    'image/jpeg': '.jpg',
+    'image/webp': '.webp',
+    'image/gif': '.gif'
+  };
+
+  const extensao = extensoes[tipo];
+
+  if (!extensao) {
+    throw new Error(
+      'Formato inválido. Use PNG, JPG, WEBP ou GIF.'
+    );
   }
 
-  const buffer = Buffer.from(await resposta.arrayBuffer());
+  const tamanhoInformado = Number(
+    resposta.headers.get('content-length') || 0
+  );
 
-  if (buffer.length > 8 * 1024 * 1024) {
-    throw new Error('A imagem ultrapassa o limite de 8 MB.');
+  if (tamanhoInformado > MAX_BANNER_SIZE) {
+    throw new Error('O banner precisa ter no máximo 8 MB.');
   }
+
+  const buffer = Buffer.from(
+    await resposta.arrayBuffer()
+  );
+
+  if (!buffer.length || buffer.length > MAX_BANNER_SIZE) {
+    throw new Error('O banner está vazio ou ultrapassa 8 MB.');
+  }
+
+  // Verifica se realmente é uma imagem válida.
+  await loadImage(buffer);
+
+  const nomeArquivo =
+    `${crypto.randomUUID()}${extensao}`;
+
+  const caminho = path.join(
+    BANNERS_DIR,
+    nomeArquivo
+  );
+
+  fs.writeFileSync(caminho, buffer);
+
+  console.log(
+    `[PERFIL] Banner salvo: ${nomeArquivo}`
+  );
+
+  return nomeArquivo;
+}
+
+// ==========================================
+// CARREGAR BANNER SALVO
+// ==========================================
+
+async function carregarBanner(nomeArquivo) {
+  if (!nomeArquivo) return null;
+
+  // Impede que o nome saia da pasta banners.
+  const nomeSeguro = path.basename(nomeArquivo);
+
+  if (nomeSeguro !== nomeArquivo) {
+    throw new Error('Nome de arquivo inválido.');
+  }
+
+  const caminho = path.join(
+    BANNERS_DIR,
+    nomeSeguro
+  );
+
+  if (!fs.existsSync(caminho)) {
+    throw new Error(
+      `Arquivo de banner não encontrado: ${nomeSeguro}`
+    );
+  }
+
+  const buffer = fs.readFileSync(caminho);
 
   return loadImage(buffer);
 }
 
-// ==============================
+// ==========================================
 // GERAR IMAGEM DO PERFIL
-// ==============================
+// ==========================================
 
 async function gerarImagem(user, perfil) {
   const canvas = createCanvas(1100, 620);
   const ctx = canvas.getContext('2d');
 
-  // Fundo principal
-  const bg = ctx.createLinearGradient(0, 0, 1100, 620);
+  // Fundo principal.
+  const bg = ctx.createLinearGradient(
+    0, 0, 1100, 620
+  );
 
   bg.addColorStop(0, '#100d1d');
   bg.addColorStop(0.55, '#21143a');
@@ -95,15 +184,17 @@ async function gerarImagem(user, perfil) {
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, 1100, 620);
 
-  // ==============================
+  // ========================================
   // BANNER
-  // ==============================
+  // ========================================
 
   let bannerCarregado = false;
 
   if (perfil.banner) {
     try {
-      const banner = await carregarBanner(perfil.banner);
+      const banner = await carregarBanner(
+        perfil.banner
+      );
 
       const largura = 1044;
       const altura = 235;
@@ -118,7 +209,15 @@ async function gerarImagem(user, perfil) {
 
       ctx.save();
 
-      arredondar(ctx, 28, 25, largura, altura, 28);
+      arredondar(
+        ctx,
+        28,
+        25,
+        largura,
+        altura,
+        28
+      );
+
       ctx.clip();
 
       ctx.drawImage(
@@ -134,20 +233,33 @@ async function gerarImagem(user, perfil) {
       bannerCarregado = true;
 
     } catch (erro) {
-      console.error('[PERFIL] Erro ao carregar banner:', erro);
+      console.error(
+        '[PERFIL] Erro ao carregar banner:',
+        erro
+      );
     }
   }
 
-  // Banner padrão quando não existe imagem personalizada
+  // Banner padrão.
   if (!bannerCarregado) {
-    const bannerGrad = ctx.createLinearGradient(28, 25, 1072, 260);
+    const bannerGrad = ctx.createLinearGradient(
+      28, 25, 1072, 260
+    );
 
     bannerGrad.addColorStop(0, '#4b2678');
     bannerGrad.addColorStop(1, '#171126');
 
     ctx.fillStyle = bannerGrad;
 
-    arredondar(ctx, 28, 25, 1044, 235, 28);
+    arredondar(
+      ctx,
+      28,
+      25,
+      1044,
+      235,
+      28
+    );
+
     ctx.fill();
 
     ctx.fillStyle = 'rgba(255,255,255,0.08)';
@@ -167,9 +279,9 @@ async function gerarImagem(user, perfil) {
     }
   }
 
-  // ==============================
+  // ========================================
   // AVATAR
-  // ==============================
+  // ========================================
 
   try {
     const avatar = await loadImage(
@@ -185,7 +297,13 @@ async function gerarImagem(user, perfil) {
     ctx.arc(145, 245, 83, 0, Math.PI * 2);
     ctx.clip();
 
-    ctx.drawImage(avatar, 62, 162, 166, 166);
+    ctx.drawImage(
+      avatar,
+      62,
+      162,
+      166,
+      166
+    );
 
     ctx.restore();
 
@@ -197,12 +315,15 @@ async function gerarImagem(user, perfil) {
     ctx.stroke();
 
   } catch (erro) {
-    console.error('[PERFIL] Erro ao carregar avatar:', erro);
+    console.error(
+      '[PERFIL] Erro ao carregar avatar:',
+      erro
+    );
   }
 
-  // ==============================
+  // ========================================
   // NOME E DESCRIÇÃO
-  // ==============================
+  // ========================================
 
   ctx.fillStyle = '#ffffff';
   ctx.font = 'bold 43px Sans';
@@ -218,15 +339,16 @@ async function gerarImagem(user, perfil) {
   ctx.font = '22px Sans';
 
   ctx.fillText(
-    perfil.descricao || 'Este usuário ainda não adicionou uma descrição.',
+    perfil.descricao ||
+    'Este usuário ainda não adicionou uma descrição.',
     258,
     340,
     780
   );
 
-  // ==============================
+  // ========================================
   // CARDS
-  // ==============================
+  // ========================================
 
   const cards = [
     {
@@ -258,7 +380,15 @@ async function gerarImagem(user, perfil) {
 
     ctx.fillStyle = 'rgba(255,255,255,0.075)';
 
-    arredondar(ctx, x, cardY, cardW, cardH, 20);
+    arredondar(
+      ctx,
+      x,
+      cardY,
+      cardW,
+      cardH,
+      20
+    );
+
     ctx.fill();
 
     ctx.strokeStyle = 'rgba(211,184,255,0.22)';
@@ -285,18 +415,25 @@ async function gerarImagem(user, perfil) {
     );
   });
 
-  // Rodapé
+  // ========================================
+  // RODAPÉ
+  // ========================================
+
   ctx.fillStyle = '#8f7eaa';
   ctx.font = '17px Sans';
 
-  ctx.fillText('ZODÍACO • PROFILE', 40, 590);
+  ctx.fillText(
+    'ZODÍACO • PROFILE',
+    40,
+    590
+  );
 
   return canvas.toBuffer('image/png');
 }
 
-// ==============================
+// ==========================================
 // COMANDO /PERFIL
-// ==============================
+// ==========================================
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -326,11 +463,17 @@ module.exports = {
       ...(perfis[user.id] || {})
     };
 
-    const imagem = await gerarImagem(user, perfil);
+    const imagem = await gerarImagem(
+      user,
+      perfil
+    );
 
-    const attachment = new AttachmentBuilder(imagem, {
-      name: 'perfil-zodiaco.png'
-    });
+    const attachment = new AttachmentBuilder(
+      imagem,
+      {
+        name: 'perfil-zodiaco.png'
+      }
+    );
 
     const rows = user.id === interaction.user.id
       ? [
@@ -350,19 +493,20 @@ module.exports = {
     });
   },
 
-  // ==============================
-  // INTERAÇÕES DO PERFIL
-  // ==============================
+  // ========================================
+  // INTERAÇÕES
+  // ========================================
 
   async handleInteraction(interaction) {
 
-    // ABRIR EDIÇÃO
+    // ABRIR EDIÇÃO.
     if (
       interaction.isButton() &&
       interaction.customId === 'perfil_abrir_edicao'
     ) {
       return interaction.reply({
         content: 'O que você deseja fazer?',
+
         components: [
           new ActionRowBuilder().addComponents(
             new StringSelectMenuBuilder()
@@ -384,11 +528,12 @@ module.exports = {
               )
           )
         ],
+
         flags: MessageFlags.Ephemeral
       });
     }
 
-    // ESCOLHER OPÇÃO
+    // ESCOLHER OPÇÃO.
     if (
       interaction.isStringSelectMenu() &&
       interaction.customId === 'perfil_editar_opcao'
@@ -437,7 +582,7 @@ module.exports = {
       return interaction.showModal(modal);
     }
 
-    // SALVAR BANNER OU DESCRIÇÃO
+    // SALVAR BANNER OU DESCRIÇÃO.
     if (
       interaction.isModalSubmit() &&
       [
@@ -461,6 +606,18 @@ module.exports = {
         });
       }
 
+      const perfis = lerPerfis();
+
+      const perfilAtual = {
+        nivel: 1,
+        money: '',
+        rank: '',
+        vip: '',
+        banner: '',
+        descricao: '',
+        ...(perfis[interaction.user.id] || {})
+      };
+
       if (tipo === 'banner') {
         let url;
 
@@ -477,33 +634,45 @@ module.exports = {
           !['http:', 'https:'].includes(url.protocol)
         ) {
           return interaction.reply({
-            content: 'O link precisa começar com http:// ou https://.',
+            content: 'O link precisa começar com HTTP ou HTTPS.',
             flags: MessageFlags.Ephemeral
           });
         }
+
+        try {
+          // Baixa e guarda a imagem no servidor.
+          const nomeArquivo =
+            await baixarESalvarBanner(url.toString());
+
+          perfilAtual.banner = nomeArquivo;
+
+        } catch (erro) {
+          console.error(
+            '[PERFIL] Erro ao salvar banner:',
+            erro
+          );
+
+          return interaction.reply({
+            content:
+              `❌ Não consegui salvar esse banner.\n` +
+              `Motivo: ${erro.message}`,
+            flags: MessageFlags.Ephemeral
+          });
+        }
+      } else {
+        perfilAtual.descricao = valor;
       }
 
-      const perfis = lerPerfis();
-
-      perfis[interaction.user.id] = {
-        nivel: 1,
-        money: '',
-        rank: '',
-        vip: '',
-        banner: '',
-        descricao: '',
-        ...(perfis[interaction.user.id] || {})
-      };
-
-      perfis[interaction.user.id][tipo] = valor;
+      perfis[interaction.user.id] = perfilAtual;
 
       salvarPerfis(perfis);
 
       return interaction.reply({
         content:
           tipo === 'banner'
-            ? '✅ Banner salvo! Use `/perfil` para visualizar.'
+            ? '✅ Banner salvo no servidor! Use `/perfil` para visualizar.'
             : '✅ Descrição atualizada! Use `/perfil` para visualizar.',
+
         flags: MessageFlags.Ephemeral
       });
     }
