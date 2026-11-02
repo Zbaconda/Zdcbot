@@ -29,6 +29,7 @@ const BANNERS_DIR = path.join(DATA_DIR, 'banners');
 const FILE = path.join(DATA_DIR, 'perfis.json');
 
 const MAX_BANNER_SIZE = 8 * 1024 * 1024;
+const TEMPO_ENVIO_BANNER = 2 * 60 * 1000;
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(BANNERS_DIR, { recursive: true });
@@ -36,6 +37,13 @@ fs.mkdirSync(BANNERS_DIR, { recursive: true });
 if (!fs.existsSync(FILE)) {
   fs.writeFileSync(FILE, '{}', 'utf8');
 }
+
+// ==========================================
+// ESTADO DOS ENVIOS
+// ==========================================
+
+const enviosPendentes = new Map();
+const clientesConectados = new WeakSet();
 
 // ==========================================
 // BANCO DE DADOS
@@ -65,11 +73,43 @@ function arredondar(ctx, x, y, w, h, r) {
 }
 
 // ==========================================
-// BAIXAR E SALVAR BANNER
+// REGISTRAR RECEBIMENTO DE IMAGENS
 // ==========================================
 
-async function baixarESalvarBanner(url) {
-  const resposta = await fetch(url, {
+function conectarRecebimento(client) {
+  if (!client || clientesConectados.has(client)) {
+    return;
+  }
+
+  clientesConectados.add(client);
+
+  client.on('messageCreate', async mensagem => {
+    try {
+      const tratado = await receberImagemBanner(mensagem);
+
+      if (tratado) return;
+
+    } catch (erro) {
+      console.error(
+        '[PERFIL] Erro ao receber imagem:',
+        erro
+      );
+    }
+  });
+
+  console.log('[PERFIL] Sistema de envio de banners conectado.');
+}
+
+// ==========================================
+// BAIXAR E SALVAR IMAGEM
+// ==========================================
+
+async function baixarESalvarBanner(anexo) {
+  if (!anexo?.url) {
+    throw new Error('Nenhuma imagem foi encontrada.');
+  }
+
+  const resposta = await fetch(anexo.url, {
     signal: AbortSignal.timeout(20000)
   });
 
@@ -79,9 +119,17 @@ async function baixarESalvarBanner(url) {
     );
   }
 
-  const tipo = (
+  const tipoResposta = (
     resposta.headers.get('content-type') || ''
   ).split(';')[0].trim().toLowerCase();
+
+  const tipoAnexo = (
+    anexo.contentType || ''
+  ).split(';')[0].trim().toLowerCase();
+
+  const tipo = tipoResposta.startsWith('image/')
+    ? tipoResposta
+    : tipoAnexo;
 
   const extensoes = {
     'image/png': '.png',
@@ -94,7 +142,7 @@ async function baixarESalvarBanner(url) {
 
   if (!extensao) {
     throw new Error(
-      'Formato inválido. Use PNG, JPG, WEBP ou GIF.'
+      'Formato inválido. Envie PNG, JPG, WEBP ou GIF.'
     );
   }
 
@@ -111,10 +159,12 @@ async function baixarESalvarBanner(url) {
   );
 
   if (!buffer.length || buffer.length > MAX_BANNER_SIZE) {
-    throw new Error('O banner está vazio ou ultrapassa 8 MB.');
+    throw new Error(
+      'A imagem está vazia ou ultrapassa o limite de 8 MB.'
+    );
   }
 
-  // Verifica se realmente é uma imagem válida.
+  // Verifica se o arquivo realmente é uma imagem.
   await loadImage(buffer);
 
   const nomeArquivo =
@@ -141,7 +191,6 @@ async function baixarESalvarBanner(url) {
 async function carregarBanner(nomeArquivo) {
   if (!nomeArquivo) return null;
 
-  // Impede que o nome saia da pasta banners.
   const nomeSeguro = path.basename(nomeArquivo);
 
   if (nomeSeguro !== nomeArquivo) {
@@ -165,6 +214,123 @@ async function carregarBanner(nomeArquivo) {
 }
 
 // ==========================================
+// RECEBER IMAGEM ENVIADA NO CHAT
+// ==========================================
+
+async function receberImagemBanner(mensagem) {
+  if (mensagem.author.bot || !mensagem.guild) {
+    return false;
+  }
+
+  const pendente = enviosPendentes.get(
+    mensagem.author.id
+  );
+
+  if (!pendente) {
+    return false;
+  }
+
+  // Confere se o envio aconteceu no mesmo servidor.
+  if (mensagem.guild.id !== pendente.guildId) {
+    return false;
+  }
+
+  // Confere se foi enviado no mesmo canal.
+  if (mensagem.channelId !== pendente.channelId) {
+    return false;
+  }
+
+  // Confere se o prazo expirou.
+  if (Date.now() > pendente.expiraEm) {
+    enviosPendentes.delete(mensagem.author.id);
+
+    await mensagem.reply(
+      '⌛ O tempo para enviar o banner acabou. Abra `/perfil` e tente novamente.'
+    ).catch(() => null);
+
+    return true;
+  }
+
+  const imagens = [...mensagem.attachments.values()].filter(
+    anexo => {
+      const tipo = anexo.contentType || '';
+
+      return (
+        tipo.startsWith('image/') ||
+        /\.(png|jpe?g|gif|webp)$/i.test(anexo.name || '')
+      );
+    }
+  );
+
+  if (imagens.length === 0) {
+    await mensagem.reply(
+      '🖼️ Não encontrei uma imagem nessa mensagem. Envie PNG, JPG, WEBP ou GIF.'
+    ).catch(() => null);
+
+    return true;
+  }
+
+  const imagem = imagens[0];
+
+  if (imagem.size > MAX_BANNER_SIZE) {
+    await mensagem.reply(
+      '❌ Essa imagem ultrapassa o limite de 8 MB. Envie outra imagem menor.'
+    ).catch(() => null);
+
+    return true;
+  }
+
+  // Impede dois envios simultâneos do mesmo usuário.
+  enviosPendentes.delete(mensagem.author.id);
+
+  let resposta;
+
+  try {
+    const nomeArquivo = await baixarESalvarBanner(imagem);
+
+    const perfis = lerPerfis();
+
+    const perfilAtual = {
+      nivel: 1,
+      money: '',
+      rank: '',
+      vip: '',
+      banner: '',
+      descricao: '',
+      ...(perfis[mensagem.author.id] || {})
+    };
+
+    perfilAtual.banner = nomeArquivo;
+
+    perfis[mensagem.author.id] = perfilAtual;
+
+    salvarPerfis(perfis);
+
+    resposta =
+      '✅ **Seu banner foi salvo com sucesso!**\n' +
+      'Use `/perfil` para visualizar seu novo perfil.';
+
+    console.log(
+      `[PERFIL] Banner atualizado para ${mensagem.author.username}.`
+    );
+
+  } catch (erro) {
+    console.error(
+      '[PERFIL] Erro ao salvar imagem:',
+      erro
+    );
+
+    resposta =
+      `❌ Não consegui salvar essa imagem.\n` +
+      `Motivo: ${erro.message}`;
+  }
+
+  await mensagem.reply(resposta).catch(() => null);
+
+  return true;
+}
+
+// ==========================================
 // GERAR IMAGEM DO PERFIL
 // ==========================================
 
@@ -172,7 +338,8 @@ async function gerarImagem(user, perfil) {
   const canvas = createCanvas(1100, 620);
   const ctx = canvas.getContext('2d');
 
-  // Fundo principal.
+  // FUNDO
+
   const bg = ctx.createLinearGradient(
     0, 0, 1100, 620
   );
@@ -240,7 +407,8 @@ async function gerarImagem(user, perfil) {
     }
   }
 
-  // Banner padrão.
+  // BANNER PADRÃO
+
   if (!bannerCarregado) {
     const bannerGrad = ctx.createLinearGradient(
       28, 25, 1072, 260
@@ -497,9 +665,12 @@ module.exports = {
   // INTERAÇÕES
   // ========================================
 
-  async handleInteraction(interaction) {
+  async handleInteraction(interaction, client) {
+    // Conecta o recebimento de imagens ao bot.
+    conectarRecebimento(client);
 
-    // ABRIR EDIÇÃO.
+    // ABRIR EDIÇÃO
+
     if (
       interaction.isButton() &&
       interaction.customId === 'perfil_abrir_edicao'
@@ -515,7 +686,7 @@ module.exports = {
               .addOptions(
                 {
                   label: 'Escolher banner',
-                  description: 'Personalizar o banner do perfil',
+                  description: 'Enviar uma imagem para o perfil',
                   value: 'banner',
                   emoji: '🖼️'
                 },
@@ -533,47 +704,55 @@ module.exports = {
       });
     }
 
-    // ESCOLHER OPÇÃO.
+    // ESCOLHER OPÇÃO
+
     if (
       interaction.isStringSelectMenu() &&
       interaction.customId === 'perfil_editar_opcao'
     ) {
       const tipo = interaction.values[0];
 
+      // ENVIO DE BANNER DIRETO PELO CHAT
+
+      if (tipo === 'banner') {
+        if (!interaction.guild || !interaction.channelId) {
+          return interaction.reply({
+            content: '❌ Abra o perfil dentro de um canal do servidor.',
+            flags: MessageFlags.Ephemeral
+          });
+        }
+
+        enviosPendentes.set(interaction.user.id, {
+          guildId: interaction.guild.id,
+          channelId: interaction.channelId,
+          expiraEm: Date.now() + TEMPO_ENVIO_BANNER
+        });
+
+        return interaction.reply({
+          content:
+            '🖼️ **Envie seu banner neste canal!**\n\n' +
+            'Anexe a imagem em uma mensagem normal.\n' +
+            '• Formatos: PNG, JPG, WEBP ou GIF.\n' +
+            '• Tamanho máximo: 8 MB.\n' +
+            '• Você tem 2 minutos para enviar.\n\n' +
+            'Assim que receber a imagem, vou salvá-la automaticamente no seu perfil.',
+          flags: MessageFlags.Ephemeral
+        });
+      }
+
+      // EDITAR DESCRIÇÃO
+
       const modal = new ModalBuilder()
-        .setCustomId(
-          tipo === 'banner'
-            ? 'perfil_modal_banner'
-            : 'perfil_modal_descricao'
-        )
-        .setTitle(
-          tipo === 'banner'
-            ? 'Escolher banner'
-            : 'Editar descrição'
-        );
+        .setCustomId('perfil_modal_descricao')
+        .setTitle('Editar descrição');
 
       const campo = new TextInputBuilder()
         .setCustomId('valor')
-        .setLabel(
-          tipo === 'banner'
-            ? 'Link direto da imagem'
-            : 'Sua descrição'
-        )
-        .setStyle(
-          tipo === 'banner'
-            ? TextInputStyle.Short
-            : TextInputStyle.Paragraph
-        )
+        .setLabel('Sua descrição')
+        .setStyle(TextInputStyle.Paragraph)
         .setRequired(true)
-        .setMaxLength(
-          tipo === 'banner' ? 500 : 180
-        );
-
-      campo.setPlaceholder(
-        tipo === 'banner'
-          ? 'https://...'
-          : 'Escreva algo sobre você...'
-      );
+        .setMaxLength(180)
+        .setPlaceholder('Escreva algo sobre você...');
 
       modal.addComponents(
         new ActionRowBuilder().addComponents(campo)
@@ -582,19 +761,12 @@ module.exports = {
       return interaction.showModal(modal);
     }
 
-    // SALVAR BANNER OU DESCRIÇÃO.
+    // SALVAR DESCRIÇÃO
+
     if (
       interaction.isModalSubmit() &&
-      [
-        'perfil_modal_banner',
-        'perfil_modal_descricao'
-      ].includes(interaction.customId)
+      interaction.customId === 'perfil_modal_descricao'
     ) {
-      const tipo =
-        interaction.customId === 'perfil_modal_banner'
-          ? 'banner'
-          : 'descricao';
-
       const valor = interaction.fields
         .getTextInputValue('valor')
         .trim();
@@ -618,65 +790,4 @@ module.exports = {
         ...(perfis[interaction.user.id] || {})
       };
 
-      if (tipo === 'banner') {
-        let url;
-
-        try {
-          url = new URL(valor);
-        } catch {
-          return interaction.reply({
-            content: 'Envie um link válido para a imagem.',
-            flags: MessageFlags.Ephemeral
-          });
-        }
-
-        if (
-          !['http:', 'https:'].includes(url.protocol)
-        ) {
-          return interaction.reply({
-            content: 'O link precisa começar com HTTP ou HTTPS.',
-            flags: MessageFlags.Ephemeral
-          });
-        }
-
-        try {
-          // Baixa e guarda a imagem no servidor.
-          const nomeArquivo =
-            await baixarESalvarBanner(url.toString());
-
-          perfilAtual.banner = nomeArquivo;
-
-        } catch (erro) {
-          console.error(
-            '[PERFIL] Erro ao salvar banner:',
-            erro
-          );
-
-          return interaction.reply({
-            content:
-              `❌ Não consegui salvar esse banner.\n` +
-              `Motivo: ${erro.message}`,
-            flags: MessageFlags.Ephemeral
-          });
-        }
-      } else {
-        perfilAtual.descricao = valor;
-      }
-
-      perfis[interaction.user.id] = perfilAtual;
-
-      salvarPerfis(perfis);
-
-      return interaction.reply({
-        content:
-          tipo === 'banner'
-            ? '✅ Banner salvo no servidor! Use `/perfil` para visualizar.'
-            : '✅ Descrição atualizada! Use `/perfil` para visualizar.',
-
-        flags: MessageFlags.Ephemeral
-      });
-    }
-
-    return false;
-  }
-};
+      perfilAtual.descricao
