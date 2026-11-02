@@ -23,7 +23,6 @@ const crypto = require('node:crypto');
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
 const BANNERS_DIR = path.join(DATA_DIR, 'banners');
-
 const FILE = path.join(DATA_DIR, 'perfis.json');
 
 const MAX_BANNER_SIZE = 8 * 1024 * 1024;
@@ -32,16 +31,16 @@ const TEMPO_ENVIO_BANNER = 2 * 60 * 1000;
 const CARGO_NAMORADO = '1566433563887403038';
 const CARGO_SOLTEIRO = '1566433517179510904';
 
+// Quando criar o cargo VIP, coloque o ID aqui.
 const CARGO_VIP = null;
 
 // ==========================================
-// DIMENSÕES DO PERFIL
+// DIMENSÕES
 // ==========================================
 
 const LARGURA = 1536;
 const ALTURA = 1195;
 
-// Banner
 const BANNER = {
     x: 0,
     y: 0,
@@ -49,14 +48,12 @@ const BANNER = {
     altura: 558
 };
 
-// Avatar
 const AVATAR = {
     x: 1235,
     y: 480,
     raio: 238
 };
 
-// Painel
 const PAINEL = {
     x: 40,
     y: 645,
@@ -64,7 +61,6 @@ const PAINEL = {
     altura: 510
 };
 
-// Nome
 const NOME = {
     x: 998,
     y: 780,
@@ -72,7 +68,6 @@ const NOME = {
     altura: 74
 };
 
-// Cartões
 const CARTOES = {
     largura: 370,
     altura: 110,
@@ -84,18 +79,6 @@ const CARTOES = {
 };
 
 // ==========================================
-// CORES
-// ==========================================
-
-const CORES = {
-    branco: '#FFFFFF',
-    cinza: '#E7E7E7',
-    roxo: '#BA35D2',
-    preto: '#171717',
-    cinzaTexto: '#777777'
-};
-
-// ==========================================
 // TEMAS
 // ==========================================
 
@@ -103,7 +86,8 @@ const TEMAS = {
     branco: {
         nome: 'Branco',
         fundo: '#FFFFFF',
-        card: '#E7E7E7',
+        painel: '#F3F3F3',
+        card: '#FFFFFF',
         texto: '#171717',
         secundario: '#777777',
         borda: '#DADADA'
@@ -112,6 +96,7 @@ const TEMAS = {
     preto: {
         nome: 'Preto',
         fundo: '#111114',
+        painel: '#202026',
         card: '#29292F',
         texto: '#FFFFFF',
         secundario: '#B8B8C2',
@@ -120,38 +105,42 @@ const TEMAS = {
 
     roxo: {
         nome: 'Roxo',
-        fundo: '#FFFFFF',
-        card: '#E8DAFA',
-        texto: '#241331',
-        secundario: '#674B7D',
-        borda: '#D5B9F2'
+        fundo: '#241331',
+        painel: '#352044',
+        card: '#49305C',
+        texto: '#FFFFFF',
+        secundario: '#D6BDEB',
+        borda: '#65477A'
     },
 
     azul: {
         nome: 'Azul',
-        fundo: '#FFFFFF',
-        card: '#DCECFD',
-        texto: '#142B43',
-        secundario: '#54718F',
-        borda: '#C0DCFA'
+        fundo: '#142B43',
+        painel: '#1D3B59',
+        card: '#294D70',
+        texto: '#FFFFFF',
+        secundario: '#C0D9F2',
+        borda: '#3B6287'
     },
 
     rosa: {
         nome: 'Rosa',
-        fundo: '#FFFFFF',
-        card: '#FFE2ED',
-        texto: '#482235',
-        secundario: '#946078',
-        borda: '#F4C3D8'
+        fundo: '#482235',
+        painel: '#613149',
+        card: '#79425D',
+        texto: '#FFFFFF',
+        secundario: '#F8C9DC',
+        borda: '#94536F'
     },
 
     vermelho: {
         nome: 'Vermelho',
-        fundo: '#FFFFFF',
-        card: '#FFE1E1',
-        texto: '#421C20',
-        secundario: '#936064',
-        borda: '#F1C0C2'
+        fundo: '#421C20',
+        painel: '#5B282D',
+        card: '#75353B',
+        texto: '#FFFFFF',
+        secundario: '#F5C5C8',
+        borda: '#91464D'
     }
 };
 
@@ -179,9 +168,7 @@ const ajustesPendentes = new Map();
 
 function lerPerfis() {
     try {
-        return JSON.parse(
-            fs.readFileSync(FILE, 'utf8')
-        );
+        return JSON.parse(fs.readFileSync(FILE, 'utf8'));
     } catch (erro) {
         console.error('[PERFIL] Erro ao ler perfis:', erro);
         return {};
@@ -199,14 +186,15 @@ function salvarPerfis(data) {
 function obterPerfil(id) {
     const perfis = lerPerfis();
 
-    return {
+    const perfil = {
         nivel: 1,
         money: 0,
         xp: 0,
-        xpNecessario: 200,
+        xpNecessario: 500,
         rank: '',
         vip: '',
         reputacao: 0,
+        advertencias: 0,
         badges: [],
         parceiro: '',
         banner: '',
@@ -219,13 +207,22 @@ function obterPerfil(id) {
         },
         ...(perfis[id] || {})
     };
+
+    // Atualiza o limite antigo de XP.
+    if (!perfil.xpNecessario || perfil.xpNecessario === 200) {
+        perfil.xpNecessario = 500;
+    }
+
+    if (perfil.advertencias == null) {
+        perfil.advertencias = 0;
+    }
+
+    return perfil;
 }
 
 function salvarPerfil(id, perfil) {
     const perfis = lerPerfis();
-
     perfis[id] = perfil;
-
     salvarPerfis(perfis);
 }
 
@@ -235,15 +232,7 @@ function salvarPerfil(id, perfil) {
 
 function arredondar(ctx, x, y, largura, altura, raio) {
     ctx.beginPath();
-
-    ctx.roundRect(
-        x,
-        y,
-        largura,
-        altura,
-        raio
-    );
-
+    ctx.roundRect(x, y, largura, altura, raio);
     ctx.closePath();
 }
 
@@ -262,24 +251,17 @@ function desenharTexto(
     ctx.textAlign = alinhamento;
     ctx.textBaseline = 'alphabetic';
 
-    ctx.fillText(
-        String(texto ?? ''),
-        x,
-        y
-    );
+    ctx.fillText(String(texto ?? ''), x, y);
 
     ctx.textAlign = 'left';
 }
 
 function desenharEmoji(ctx, emoji, x, y, tamanho) {
     ctx.save();
-
     ctx.font = `${tamanho}px Arial`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-
     ctx.fillText(emoji, x, y);
-
     ctx.restore();
 }
 
@@ -288,42 +270,34 @@ function desenharEmoji(ctx, emoji, x, y, tamanho) {
 // ==========================================
 
 function obterEstadoCivil(member) {
-    if (!member) {
-        return 'Estado civil';
-    }
+    if (!member) return 'Não definido';
 
     const cargos = member.roles.cache;
 
     if (cargos.has(CARGO_NAMORADO)) {
-        return 'Casado(a)';
+        return 'Namorando';
     }
 
     if (cargos.has(CARGO_SOLTEIRO)) {
-        return 'Solteiro(a)';
+        return 'Solteiro';
     }
 
-    return 'Estado civil';
+    return 'Não definido';
 }
 
 // ==========================================
-// DESENHAR MODELO DIRETAMENTE NO CANVAS
+// DESENHAR MODELO
 // ==========================================
 
 function desenharModelo(ctx, tema) {
     // FUNDO PRINCIPAL
 
     ctx.fillStyle = tema.fundo;
+    ctx.fillRect(0, 0, LARGURA, ALTURA);
 
-    ctx.fillRect(
-        0,
-        0,
-        LARGURA,
-        ALTURA
-    );
+    // PAINEL
 
-    // PAINEL DE INFORMAÇÕES
-
-    ctx.fillStyle = tema.card;
+    ctx.fillStyle = tema.painel;
 
     arredondar(
         ctx,
@@ -336,17 +310,58 @@ function desenharModelo(ctx, tema) {
 
     ctx.fill();
 
-    // DETALHE DE SEPARAÇÃO
+    // DETALHE
 
     ctx.strokeStyle = tema.borda;
     ctx.lineWidth = 2;
 
     ctx.beginPath();
-
     ctx.moveTo(55, 625);
     ctx.lineTo(830, 625);
-
     ctx.stroke();
+}
+
+// ==========================================
+// INDICADOR DE BANNER
+// ==========================================
+
+function desenharIndicadorBanner(ctx, tema) {
+    ctx.save();
+
+    // Fundo discreto para indicar onde colocar o banner.
+
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+
+    arredondar(
+        ctx,
+        55,
+        55,
+        260,
+        85,
+        22
+    );
+
+    ctx.fill();
+
+    desenharEmoji(
+        ctx,
+        '🖼️',
+        100,
+        98,
+        42
+    );
+
+    desenharTexto(
+        ctx,
+        'SEU BANNER',
+        145,
+        108,
+        27,
+        '#FFFFFF',
+        'bold'
+    );
+
+    ctx.restore();
 }
 
 // ==========================================
@@ -403,14 +418,9 @@ async function baixarESalvarBanner(anexo) {
         throw new Error('O banner precisa ter no máximo 8 MB.');
     }
 
-    const buffer = Buffer.from(
-        await resposta.arrayBuffer()
-    );
+    const buffer = Buffer.from(await resposta.arrayBuffer());
 
-    if (
-        !buffer.length ||
-        buffer.length > MAX_BANNER_SIZE
-    ) {
+    if (!buffer.length || buffer.length > MAX_BANNER_SIZE) {
         throw new Error(
             'A imagem está vazia ou ultrapassa 8 MB.'
         );
@@ -441,18 +451,13 @@ async function carregarBanner(nomeArquivo) {
         throw new Error('Nome de arquivo inválido.');
     }
 
-    const caminho = path.join(
-        BANNERS_DIR,
-        nomeSeguro
-    );
+    const caminho = path.join(BANNERS_DIR, nomeSeguro);
 
     if (!fs.existsSync(caminho)) {
         throw new Error('Banner não encontrado.');
     }
 
-    return loadImage(
-        fs.readFileSync(caminho)
-    );
+    return loadImage(fs.readFileSync(caminho));
 }
 
 // ==========================================
@@ -540,7 +545,7 @@ function desenharBanner(ctx, imagem, crop = {}) {
 }
 
 // ==========================================
-// AVATAR DO DISCORD
+// AVATAR
 // ==========================================
 
 async function desenharAvatar(ctx, user) {
@@ -550,8 +555,6 @@ async function desenharAvatar(ctx, user) {
             size: 512
         })
     );
-
-    // BORDA BRANCA
 
     ctx.beginPath();
 
@@ -565,8 +568,6 @@ async function desenharAvatar(ctx, user) {
 
     ctx.fillStyle = '#FFFFFF';
     ctx.fill();
-
-    // IMAGEM DO AVATAR
 
     ctx.save();
 
@@ -594,11 +595,11 @@ async function desenharAvatar(ctx, user) {
 }
 
 // ==========================================
-// NOME DE EXIBIÇÃO
+// NOME
 // ==========================================
 
 function desenharNome(ctx, user, tema) {
-    ctx.fillStyle = tema.card;
+    ctx.fillStyle = tema.painel;
 
     arredondar(
         ctx,
@@ -615,13 +616,11 @@ function desenharNome(ctx, user, tema) {
 
     ctx.save();
 
-    ctx.font = 'bold 48px Arial';
-
     let tamanho = 48;
+    ctx.font = `bold ${tamanho}px Arial`;
 
     while (
-        ctx.measureText(nome).width >
-        NOME.largura - 35 &&
+        ctx.measureText(nome).width > NOME.largura - 35 &&
         tamanho > 22
     ) {
         tamanho -= 2;
@@ -651,9 +650,8 @@ function desenharDescricao(ctx, perfil, tema) {
 
     ctx.save();
 
-    ctx.font = 'bold 34px Arial';
-
     let tamanho = 34;
+    ctx.font = `bold ${tamanho}px Arial`;
 
     while (
         ctx.measureText(descricao).width > 770 &&
@@ -676,42 +674,25 @@ function desenharDescricao(ctx, perfil, tema) {
     );
 
     ctx.beginPath();
-
     ctx.moveTo(55, 625);
     ctx.lineTo(830, 625);
 
     ctx.strokeStyle = tema.borda;
     ctx.lineWidth = 2;
-
     ctx.stroke();
 }
 
 // ==========================================
-// ÍCONES
+// ÍCONES EM EMOJI
 // ==========================================
 
 function desenharIcone(ctx, tipo, x, y) {
-    ctx.save();
-
-    ctx.fillStyle = CORES.roxo;
-
-    arredondar(
-        ctx,
-        x,
-        y,
-        88,
-        88,
-        [25, 0, 0, 25]
-    );
-
-    ctx.fill();
-
     const icones = {
         coins: '🪙',
         nivel: '⭐',
-        badges: '🏅',
-        reps: '👍',
-        casado: '🕊️'
+        vip: '👑',
+        advertencias: '⚠️',
+        estado: '💗'
     };
 
     desenharEmoji(
@@ -719,34 +700,12 @@ function desenharIcone(ctx, tipo, x, y) {
         icones[tipo] || '✨',
         x + 44,
         y + 44,
-        53
+        58
     );
-
-    if (tipo === 'reps') {
-        desenharEmoji(
-            ctx,
-            '⭐',
-            x + 17,
-            y + 17,
-            20
-        );
-    }
-
-    if (tipo === 'casado') {
-        desenharEmoji(
-            ctx,
-            '💗',
-            x + 20,
-            y + 18,
-            19
-        );
-    }
-
-    ctx.restore();
 }
 
 // ==========================================
-// CARTÃO INDIVIDUAL
+// CARTÃO
 // ==========================================
 
 function desenharCartao(
@@ -763,7 +722,7 @@ function desenharCartao(
 
     // FUNDO DO CARTÃO
 
-    ctx.fillStyle = tema.fundo;
+    ctx.fillStyle = tema.card;
 
     arredondar(
         ctx,
@@ -771,12 +730,12 @@ function desenharCartao(
         y,
         largura,
         altura,
-        55
+        35
     );
 
     ctx.fill();
 
-    // ÍCONE ROXO
+    // EMOJI
 
     desenharIcone(
         ctx,
@@ -787,25 +746,55 @@ function desenharCartao(
 
     // TEXTO
 
-    const textoX = x + 125;
+    const textoX = x + 100;
+
+    let tamanhoTitulo = 29;
+
+    ctx.save();
+    ctx.font = `bold ${tamanhoTitulo}px Arial`;
+
+    while (
+        ctx.measureText(titulo).width > 250 &&
+        tamanhoTitulo > 19
+    ) {
+        tamanhoTitulo -= 2;
+        ctx.font = `bold ${tamanhoTitulo}px Arial`;
+    }
+
+    ctx.restore();
 
     desenharTexto(
         ctx,
         titulo,
         textoX,
-        y + 52,
-        31,
+        y + 48,
+        tamanhoTitulo,
         tema.texto,
         'bold'
     );
+
+    let tamanhoValor = 25;
+
+    ctx.save();
+    ctx.font = `bold ${tamanhoValor}px Arial`;
+
+    while (
+        ctx.measureText(valor).width > 250 &&
+        tamanhoValor > 16
+    ) {
+        tamanhoValor -= 2;
+        ctx.font = `bold ${tamanhoValor}px Arial`;
+    }
+
+    ctx.restore();
 
     desenharTexto(
         ctx,
         valor,
         textoX,
-        y + 86,
-        25,
-        tema.texto,
+        y + 83,
+        tamanhoValor,
+        tema.secundario,
         'bold'
     );
 }
@@ -818,16 +807,21 @@ function desenharPainel(ctx, perfil, member, tema) {
     const nivel = Number(perfil.nivel) || 1;
     const money = Number(perfil.money) || 0;
     const xp = Number(perfil.xp) || 0;
-    const xpNecessario = Number(perfil.xpNecessario) || 200;
-    const reputacao = Number(perfil.reputacao) || 0;
+    const xpNecessario = Number(perfil.xpNecessario) || 500;
 
-    const badges = Array.isArray(perfil.badges)
-        ? perfil.badges
-        : [];
+    const advertencias = Number(perfil.advertencias) || 0;
 
     const estadoCivil = obterEstadoCivil(member);
 
     const parceiro = perfil.parceiro || 'Não informado';
+
+    // VIP
+
+    let vip = 'Sem VIP';
+
+    if (CARGO_VIP && member?.roles?.cache?.has(CARGO_VIP)) {
+        vip = member.guild.roles.cache.get(CARGO_VIP)?.name || 'VIP';
+    }
 
     // PRIMEIRA LINHA
 
@@ -845,8 +839,8 @@ function desenharPainel(ctx, perfil, member, tema) {
         ctx,
         CARTOES.x2,
         CARTOES.y1,
-        `Nível: ${nivel}`,
-        `${xp}/${xpNecessario}`,
+        `Nível ${nivel}`,
+        `${xp}/${xpNecessario} XP`,
         'nivel',
         tema
     );
@@ -857,9 +851,9 @@ function desenharPainel(ctx, perfil, member, tema) {
         ctx,
         CARTOES.x1,
         CARTOES.y2,
-        'Badges',
-        String(badges.length),
-        'badges',
+        'VIP',
+        vip,
+        'vip',
         tema
     );
 
@@ -867,9 +861,9 @@ function desenharPainel(ctx, perfil, member, tema) {
         ctx,
         CARTOES.x2,
         CARTOES.y2,
-        'Reps',
-        String(reputacao),
-        'reps',
+        'Advertências',
+        String(advertencias),
+        'advertencias',
         tema
     );
 
@@ -879,9 +873,9 @@ function desenharPainel(ctx, perfil, member, tema) {
         ctx,
         CARTOES.x1,
         CARTOES.y3,
+        'Estado civil',
         estadoCivil,
-        parceiro,
-        'casado',
+        'estado',
         tema
     );
 }
@@ -891,16 +885,10 @@ function desenharPainel(ctx, perfil, member, tema) {
 // ==========================================
 
 async function gerarImagem(user, perfil, member = null) {
-    const canvas = createCanvas(
-        LARGURA,
-        ALTURA
-    );
-
+    const canvas = createCanvas(LARGURA, ALTURA);
     const ctx = canvas.getContext('2d');
 
     const tema = TEMAS[perfil.tema] || TEMAS.branco;
-
-    // DESENHAR FUNDO E PAINEL
 
     desenharModelo(ctx, tema);
 
@@ -908,9 +896,7 @@ async function gerarImagem(user, perfil, member = null) {
 
     if (perfil.banner) {
         try {
-            const banner = await carregarBanner(
-                perfil.banner
-            );
+            const banner = await carregarBanner(perfil.banner);
 
             desenharBanner(
                 ctx,
@@ -922,694 +908,13 @@ async function gerarImagem(user, perfil, member = null) {
                 '[PERFIL] Erro ao carregar banner:',
                 erro
             );
+
+            desenharIndicadorBanner(ctx, tema);
         }
+    } else {
+        desenharIndicadorBanner(ctx, tema);
     }
 
     // AVATAR
 
-    await desenharAvatar(
-        ctx,
-        user
-    );
-
-    // DESCRIÇÃO
-
-    desenharDescricao(
-        ctx,
-        perfil,
-        tema
-    );
-
-    // INFORMAÇÕES
-
-    desenharPainel(
-        ctx,
-        perfil,
-        member,
-        tema
-    );
-
-    // NOME
-
-    desenharNome(
-        ctx,
-        user,
-        tema
-    );
-
-    return canvas.toBuffer('image/png');
-}
-
-// ==========================================
-// BOTÕES DE ENQUADRAMENTO
-// ==========================================
-
-function criarBotoesCrop(usuarioId) {
-    const prefixo = `perfil_crop_${usuarioId}_`;
-
-    return [
-        new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-                .setCustomId(`${prefixo}cima`)
-                .setLabel('↑')
-                .setStyle(ButtonStyle.Secondary),
-
-            new ButtonBuilder()
-                .setCustomId(`${prefixo}esquerda`)
-                .setLabel('←')
-                .setStyle(ButtonStyle.Secondary),
-
-            new ButtonBuilder()
-                .setCustomId(`${prefixo}baixo`)
-                .setLabel('↓')
-                .setStyle(ButtonStyle.Secondary),
-
-            new ButtonBuilder()
-                .setCustomId(`${prefixo}direita`)
-                .setLabel('→')
-                .setStyle(ButtonStyle.Secondary),
-
-            new ButtonBuilder()
-                .setCustomId(`${prefixo}menos`)
-                .setLabel('−')
-                .setStyle(ButtonStyle.Secondary)
-        ),
-
-        new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-                .setCustomId(`${prefixo}mais`)
-                .setLabel('+')
-                .setStyle(ButtonStyle.Secondary),
-
-            new ButtonBuilder()
-                .setCustomId(`${prefixo}resetar`)
-                .setLabel('Resetar')
-                .setStyle(ButtonStyle.Secondary)
-        ),
-
-        new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-                .setCustomId(`${prefixo}cancelar`)
-                .setLabel('Cancelar')
-                .setStyle(ButtonStyle.Danger),
-
-            new ButtonBuilder()
-                .setCustomId(`${prefixo}confirmar`)
-                .setLabel('Confirmar')
-                .setStyle(ButtonStyle.Success)
-        )
-    ];
-}
-
-// ==========================================
-// ATUALIZAR PRÉVIA
-// ==========================================
-
-async function atualizarPreviewCrop(interaction, estado) {
-    const perfil = obterPerfil(
-        interaction.user.id
-    );
-
-    perfil.banner = estado.banner;
-    perfil.crop = estado.crop;
-
-    const imagem = await gerarImagem(
-        interaction.user,
-        perfil,
-        interaction.member
-    );
-
-    const attachment = new AttachmentBuilder(
-        imagem,
-        {
-            name: 'previa-perfil.png'
-        }
-    );
-
-    return interaction.update({
-        content:
-            '🖼️ Ajuste o enquadramento do banner.\n' +
-            'Use as setas para mover a imagem e + ou − para ajustar o zoom.',
-        files: [attachment],
-        attachments: [],
-        components: criarBotoesCrop(
-            interaction.user.id
-        )
-    });
-}
-
-// ==========================================
-// RECEBER IMAGEM
-// ==========================================
-
-async function receberImagemBanner(mensagem) {
-    if (mensagem.author.bot || !mensagem.guild) {
-        return false;
-    }
-
-    const pendente = enviosPendentes.get(
-        mensagem.author.id
-    );
-
-    if (!pendente) return false;
-
-    if (mensagem.guild.id !== pendente.guildId) {
-        return false;
-    }
-
-    if (Date.now() > pendente.expiraEm) {
-        enviosPendentes.delete(
-            mensagem.author.id
-        );
-
-        await mensagem.reply(
-            '⌛ O tempo para enviar o banner acabou. Abra `/perfil` e tente novamente.'
-        ).catch(() => null);
-
-        return true;
-    }
-
-    const imagens = [
-        ...mensagem.attachments.values()
-    ].filter(anexo => {
-        const tipo = anexo.contentType || '';
-
-        return (
-            tipo.startsWith('image/') ||
-            /\.(png|jpe?g|gif|webp)$/i.test(anexo.name || '')
-        );
-    });
-
-    if (!imagens.length) {
-        await mensagem.reply(
-            '🖼️ Envie uma imagem PNG, JPG, WEBP ou GIF.'
-        ).catch(() => null);
-
-        return true;
-    }
-
-    const imagem = imagens[0];
-
-    if (imagem.size > MAX_BANNER_SIZE) {
-        await mensagem.reply(
-            '❌ Essa imagem ultrapassa o limite de 8 MB.'
-        ).catch(() => null);
-
-        return true;
-    }
-
-    enviosPendentes.delete(
-        mensagem.author.id
-    );
-
-    let nomeArquivo = null;
-    let painelEnviado = false;
-
-    try {
-        nomeArquivo = await baixarESalvarBanner(
-            imagem
-        );
-
-        const perfil = obterPerfil(
-            mensagem.author.id
-        );
-
-        const cropInicial = {
-            x: 0,
-            y: 0,
-            zoom: 1
-        };
-
-        const membro = await mensagem.guild.members
-            .fetch(mensagem.author.id)
-            .catch(() => null);
-
-        const imagemPreview = await gerarImagem(
-            mensagem.author,
-            {
-                ...perfil,
-                banner: nomeArquivo,
-                crop: cropInicial
-            },
-            membro
-        );
-
-        const attachment = new AttachmentBuilder(
-            imagemPreview,
-            {
-                name: 'previa-perfil.png'
-            }
-        );
-
-        await mensagem.channel.send({
-            content:
-                `<@${mensagem.author.id}> ✅ Imagem recebida!\n\n` +
-                'Ajuste o enquadramento do seu banner.',
-            files: [attachment],
-            components: criarBotoesCrop(
-                mensagem.author.id
-            )
-        });
-
-        painelEnviado = true;
-
-        ajustesPendentes.set(
-            mensagem.author.id,
-            {
-                banner: nomeArquivo,
-                crop: cropInicial,
-                guildId: mensagem.guild.id,
-                criadoEm: Date.now()
-            }
-        );
-
-        await mensagem.delete().catch(() => null);
-
-    } catch (erro) {
-        console.error(
-            '[PERFIL] Erro ao receber banner:',
-            erro
-        );
-
-        if (!painelEnviado) {
-            if (nomeArquivo) {
-                const caminho = path.join(
-                    BANNERS_DIR,
-                    nomeArquivo
-                );
-
-                if (fs.existsSync(caminho)) {
-                    fs.unlinkSync(caminho);
-                }
-            }
-
-            ajustesPendentes.delete(
-                mensagem.author.id
-            );
-
-            await mensagem.reply({
-                content:
-                    `❌ Não consegui processar essa imagem: ${erro.message}\n` +
-                    'Sua mensagem original foi mantida.'
-            }).catch(() => null);
-        }
-    }
-
-    return true;
-}
-
-// ==========================================
-// COMANDO /PERFIL
-// ==========================================
-
-module.exports = {
-    data: new SlashCommandBuilder()
-        .setName('perfil')
-        .setDescription('Visualize seu perfil no Zodíaco')
-        .addUserOption(option =>
-            option
-                .setName('usuario')
-                .setDescription('Perfil de outro membro')
-                .setRequired(false)
-        ),
-
-    async execute(interaction) {
-        const user =
-            interaction.options.getUser('usuario') ||
-            interaction.user;
-
-        const perfil = obterPerfil(user.id);
-
-        const member = interaction.guild
-            ? await interaction.guild.members
-                .fetch(user.id)
-                .catch(() => null)
-            : null;
-
-        const imagem = await gerarImagem(
-            user,
-            perfil,
-            member
-        );
-
-        const attachment = new AttachmentBuilder(
-            imagem,
-            {
-                name: 'perfil-zodiaco.png'
-            }
-        );
-
-        const rows = user.id === interaction.user.id
-            ? [
-                new ActionRowBuilder().addComponents(
-                    new ButtonBuilder()
-                        .setCustomId('perfil_abrir_edicao')
-                        .setLabel('Editar')
-                        .setStyle(ButtonStyle.Secondary)
-                )
-            ]
-            : [];
-
-        return interaction.reply({
-            files: [attachment],
-            components: rows
-        });
-    },
-
-    // ========================================
-    // RECEBER MENSAGENS
-    // ========================================
-
-    async handleMessage(mensagem) {
-        return receberImagemBanner(mensagem);
-    },
-
-    // ========================================
-    // INTERAÇÕES
-    // ========================================
-
-    async handleInteraction(interaction) {
-
-        // ABRIR EDIÇÃO
-
-        if (
-            interaction.isButton() &&
-            interaction.customId === 'perfil_abrir_edicao'
-        ) {
-            return interaction.reply({
-                content: 'O que você deseja fazer?',
-                components: [
-                    new ActionRowBuilder().addComponents(
-                        new StringSelectMenuBuilder()
-                            .setCustomId('perfil_editar_opcao')
-                            .setPlaceholder('Escolha uma opção')
-                            .addOptions(
-                                {
-                                    label: 'Alterar banner',
-                                    description: 'Enviar e ajustar uma imagem',
-                                    value: 'banner'
-                                },
-                                {
-                                    label: 'Editar descrição',
-                                    description: 'Alterar a descrição do perfil',
-                                    value: 'descricao'
-                                },
-                                {
-                                    label: 'Personalizar tema',
-                                    description: 'Escolher a cor do perfil',
-                                    value: 'tema'
-                                }
-                            )
-                    )
-                ],
-                flags: MessageFlags.Ephemeral
-            });
-        }
-
-        // ESCOLHER OPÇÃO
-
-        if (
-            interaction.isStringSelectMenu() &&
-            interaction.customId === 'perfil_editar_opcao'
-        ) {
-            const tipo = interaction.values[0];
-
-            // BANNER
-
-            if (tipo === 'banner') {
-                if (!interaction.guild) {
-                    return interaction.reply({
-                        content: '❌ Abra o perfil dentro de um servidor.',
-                        flags: MessageFlags.Ephemeral
-                    });
-                }
-
-                enviosPendentes.set(
-                    interaction.user.id,
-                    {
-                        guildId: interaction.guild.id,
-                        expiraEm: Date.now() + TEMPO_ENVIO_BANNER
-                    }
-                );
-
-                return interaction.reply({
-                    content:
-                        '🖼️ **Envie seu banner em qualquer canal deste servidor!**\n\n' +
-                        '• PNG, JPG, WEBP ou GIF.\n' +
-                        '• Máximo de 8 MB.\n' +
-                        '• Você tem 2 minutos para enviar.',
-                    flags: MessageFlags.Ephemeral
-                });
-            }
-
-            // TEMA
-
-            if (tipo === 'tema') {
-                return interaction.reply({
-                    content: '**Escolha o tema do seu perfil:**',
-                    components: [
-                        new ActionRowBuilder().addComponents(
-                            new StringSelectMenuBuilder()
-                                .setCustomId('perfil_escolher_tema')
-                                .setPlaceholder('Selecione uma cor')
-                                .addOptions(
-                                    { label: 'Branco', value: 'branco' },
-                                    { label: 'Preto', value: 'preto' },
-                                    { label: 'Roxo', value: 'roxo' },
-                                    { label: 'Azul', value: 'azul' },
-                                    { label: 'Rosa', value: 'rosa' },
-                                    { label: 'Vermelho', value: 'vermelho' }
-                                )
-                        )
-                    ],
-                    flags: MessageFlags.Ephemeral
-                });
-            }
-
-            // DESCRIÇÃO
-
-            const modal = new ModalBuilder()
-                .setCustomId('perfil_modal_descricao')
-                .setTitle('Editar descrição');
-
-            const campo = new TextInputBuilder()
-                .setCustomId('valor')
-                .setLabel('Sua descrição')
-                .setStyle(TextInputStyle.Paragraph)
-                .setRequired(true)
-                .setMaxLength(180)
-                .setPlaceholder('Escreva algo sobre você...');
-
-            modal.addComponents(
-                new ActionRowBuilder().addComponents(campo)
-            );
-
-            return interaction.showModal(modal);
-        }
-
-        // ESCOLHER TEMA
-
-        if (
-            interaction.isStringSelectMenu() &&
-            interaction.customId === 'perfil_escolher_tema'
-        ) {
-            const tema = interaction.values[0];
-
-            if (!TEMAS[tema]) {
-                return interaction.reply({
-                    content: 'Tema inválido.',
-                    flags: MessageFlags.Ephemeral
-                });
-            }
-
-            const perfil = obterPerfil(
-                interaction.user.id
-            );
-
-            perfil.tema = tema;
-
-            salvarPerfil(
-                interaction.user.id,
-                perfil
-            );
-
-            return interaction.update({
-                content:
-                    `✅ Seu tema foi alterado para **${TEMAS[tema].nome}**!`,
-                components: []
-            });
-        }
-
-        // AJUSTAR BANNER
-
-        if (
-            interaction.isButton() &&
-            interaction.customId.startsWith('perfil_crop_')
-        ) {
-            const partes = interaction.customId.split('_');
-
-            const usuarioId = partes[2];
-            const acao = partes[3];
-
-            if (usuarioId !== interaction.user.id) {
-                return interaction.reply({
-                    content:
-                        '❌ Somente quem enviou este banner pode ajustar o enquadramento.',
-                    flags: MessageFlags.Ephemeral
-                });
-            }
-
-            const estado = ajustesPendentes.get(
-                interaction.user.id
-            );
-
-            if (!estado) {
-                return interaction.reply({
-                    content:
-                        'Esse ajuste expirou. Envie o banner novamente.',
-                    flags: MessageFlags.Ephemeral
-                });
-            }
-
-            if (
-                Date.now() - estado.criadoEm >
-                TEMPO_ENVIO_BANNER
-            ) {
-                ajustesPendentes.delete(
-                    interaction.user.id
-                );
-
-                return interaction.reply({
-                    content:
-                        'O tempo para ajustar o banner acabou. Envie novamente.',
-                    flags: MessageFlags.Ephemeral
-                });
-            }
-
-            // CANCELAR
-
-            if (acao === 'cancelar') {
-                ajustesPendentes.delete(
-                    interaction.user.id
-                );
-
-                return interaction.update({
-                    content:
-                        '❌ Ajuste cancelado. Seu banner anterior foi mantido.',
-                    attachments: [],
-                    components: []
-                });
-            }
-
-            // CONFIRMAR
-
-            if (acao === 'confirmar') {
-                const perfil = obterPerfil(
-                    interaction.user.id
-                );
-
-                perfil.banner = estado.banner;
-                perfil.crop = estado.crop;
-
-                salvarPerfil(
-                    interaction.user.id,
-                    perfil
-                );
-
-                ajustesPendentes.delete(
-                    interaction.user.id
-                );
-
-                return interaction.update({
-                    content:
-                        '✅ **Seu novo banner foi salvo no perfil!**',
-                    attachments: [],
-                    components: []
-                });
-            }
-
-            // MOVIMENTAR
-
-            const passo = 0.05;
-
-            if (acao === 'cima') estado.crop.y -= passo;
-            if (acao === 'baixo') estado.crop.y += passo;
-            if (acao === 'esquerda') estado.crop.x -= passo;
-            if (acao === 'direita') estado.crop.x += passo;
-
-            if (acao === 'mais') {
-                estado.crop.zoom = Math.min(
-                    3,
-                    estado.crop.zoom + 0.15
-                );
-            }
-
-            if (acao === 'menos') {
-                estado.crop.zoom = Math.max(
-                    1,
-                    estado.crop.zoom - 0.15
-                );
-            }
-
-            if (acao === 'resetar') {
-                estado.crop = {
-                    x: 0,
-                    y: 0,
-                    zoom: 1
-                };
-            }
-
-            estado.crop.x = Math.max(
-                -0.45,
-                Math.min(0.45, estado.crop.x)
-            );
-
-            estado.crop.y = Math.max(
-                -0.45,
-                Math.min(0.45, estado.crop.y)
-            );
-
-            return atualizarPreviewCrop(
-                interaction,
-                estado
-            );
-        }
-
-        // SALVAR DESCRIÇÃO
-
-        if (
-            interaction.isModalSubmit() &&
-            interaction.customId === 'perfil_modal_descricao'
-        ) {
-            const valor = interaction.fields
-                .getTextInputValue('valor')
-                .trim();
-
-            if (!valor) {
-                return interaction.reply({
-                    content: 'O campo não pode ficar vazio.',
-                    flags: MessageFlags.Ephemeral
-                });
-            }
-
-            const perfil = obterPerfil(
-                interaction.user.id
-            );
-
-            perfil.descricao = valor;
-
-            salvarPerfil(
-                interaction.user.id,
-                perfil
-            );
-
-            return interaction.reply({
-                content:
-                    '✅ Sua descrição foi atualizada com sucesso!',
-                flags: MessageFlags.Ephemeral
-            });
-        }
-
-        return false;
-    }
-};
+    await desenhar
