@@ -39,11 +39,10 @@ if (!fs.existsSync(FILE)) {
 }
 
 // ==========================================
-// ESTADO DOS ENVIOS
+// ENVIOS PENDENTES
 // ==========================================
 
 const enviosPendentes = new Map();
-const clientesConectados = new WeakSet();
 
 // ==========================================
 // BANCO DE DADOS
@@ -73,35 +72,7 @@ function arredondar(ctx, x, y, w, h, r) {
 }
 
 // ==========================================
-// REGISTRAR RECEBIMENTO DE IMAGENS
-// ==========================================
-
-function conectarRecebimento(client) {
-  if (!client || clientesConectados.has(client)) {
-    return;
-  }
-
-  clientesConectados.add(client);
-
-  client.on('messageCreate', async mensagem => {
-    try {
-      const tratado = await receberImagemBanner(mensagem);
-
-      if (tratado) return;
-
-    } catch (erro) {
-      console.error(
-        '[PERFIL] Erro ao receber imagem:',
-        erro
-      );
-    }
-  });
-
-  console.log('[PERFIL] Sistema de envio de banners conectado.');
-}
-
-// ==========================================
-// BAIXAR E SALVAR IMAGEM
+// BAIXAR E SALVAR BANNER
 // ==========================================
 
 async function baixarESalvarBanner(anexo) {
@@ -177,9 +148,7 @@ async function baixarESalvarBanner(anexo) {
 
   fs.writeFileSync(caminho, buffer);
 
-  console.log(
-    `[PERFIL] Banner salvo: ${nomeArquivo}`
-  );
+  console.log(`[PERFIL] Banner salvo: ${nomeArquivo}`);
 
   return nomeArquivo;
 }
@@ -230,17 +199,17 @@ async function receberImagemBanner(mensagem) {
     return false;
   }
 
-  // Confere se o envio aconteceu no mesmo servidor.
+  // Confere o servidor.
   if (mensagem.guild.id !== pendente.guildId) {
     return false;
   }
 
-  // Confere se foi enviado no mesmo canal.
+  // Confere o canal.
   if (mensagem.channelId !== pendente.channelId) {
     return false;
   }
 
-  // Confere se o prazo expirou.
+  // Confere o prazo.
   if (Date.now() > pendente.expiraEm) {
     enviosPendentes.delete(mensagem.author.id);
 
@@ -280,7 +249,7 @@ async function receberImagemBanner(mensagem) {
     return true;
   }
 
-  // Impede dois envios simultâneos do mesmo usuário.
+  // Evita dois envios simultâneos.
   enviosPendentes.delete(mensagem.author.id);
 
   let resposta;
@@ -359,9 +328,7 @@ async function gerarImagem(user, perfil) {
 
   if (perfil.banner) {
     try {
-      const banner = await carregarBanner(
-        perfil.banner
-      );
+      const banner = await carregarBanner(perfil.banner);
 
       const largura = 1044;
       const altura = 235;
@@ -662,12 +629,18 @@ module.exports = {
   },
 
   // ========================================
+  // RECEBER MENSAGENS DE BANNER
+  // ========================================
+
+  async handleMessage(mensagem) {
+    return receberImagemBanner(mensagem);
+  },
+
+  // ========================================
   // INTERAÇÕES
   // ========================================
 
-  async handleInteraction(interaction, client) {
-    // Conecta o recebimento de imagens ao bot.
-    conectarRecebimento(client);
+  async handleInteraction(interaction) {
 
     // ABRIR EDIÇÃO
 
@@ -712,7 +685,7 @@ module.exports = {
     ) {
       const tipo = interaction.values[0];
 
-      // ENVIO DE BANNER DIRETO PELO CHAT
+      // ENVIO DE BANNER
 
       if (tipo === 'banner') {
         if (!interaction.guild || !interaction.channelId) {
@@ -736,6 +709,7 @@ module.exports = {
             '• Tamanho máximo: 8 MB.\n' +
             '• Você tem 2 minutos para enviar.\n\n' +
             'Assim que receber a imagem, vou salvá-la automaticamente no seu perfil.',
+
           flags: MessageFlags.Ephemeral
         });
       }
@@ -790,4 +764,18 @@ module.exports = {
         ...(perfis[interaction.user.id] || {})
       };
 
-      perfilAtual.descricao
+      perfilAtual.descricao = valor;
+
+      perfis[interaction.user.id] = perfilAtual;
+
+      salvarPerfis(perfis);
+
+      return interaction.reply({
+        content: '✅ Sua descrição foi atualizada com sucesso!',
+        flags: MessageFlags.Ephemeral
+      });
+    }
+
+    return false;
+  }
+};
