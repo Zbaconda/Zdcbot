@@ -23,6 +23,13 @@ const crypto = require('node:crypto');
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
 const BANNERS_DIR = path.join(DATA_DIR, 'banners');
+const MODELOS_DIR = path.join(DATA_DIR, 'modelos');
+
+const TEMPLATE = path.join(
+    MODELOS_DIR,
+    'perfil-base.png'
+);
+
 const FILE = path.join(DATA_DIR, 'perfis.json');
 
 const MAX_BANNER_SIZE = 8 * 1024 * 1024;
@@ -34,87 +41,133 @@ const CARGO_SOLTEIRO = '1566433517179510904';
 const CARGO_VIP = null;
 
 // ==========================================
+// DIMENSÕES EXATAS DO MODELO
+// ==========================================
+
+const LARGURA = 1536;
+const ALTURA = 1195;
+
+// Área do banner
+const BANNER = {
+    x: 0,
+    y: 0,
+    largura: 1536,
+    altura: 558
+};
+
+// Área do avatar
+const AVATAR = {
+    x: 1235,
+    y: 480,
+    raio: 238
+};
+
+// Área cinza
+const PAINEL = {
+    x: 40,
+    y: 645,
+    largura: 794,
+    altura: 510
+};
+
+// Nome
+const NOME = {
+    x: 998,
+    y: 780,
+    largura: 460,
+    altura: 74
+};
+
+// Cartões
+const CARTOES = {
+    largura: 370,
+    altura: 110,
+    x1: 55,
+    x2: 445,
+    y1: 690,
+    y2: 840,
+    y3: 990
+};
+
+// ==========================================
+// CORES
+// ==========================================
+
+const CORES = {
+    branco: '#FFFFFF',
+    cinza: '#E7E7E7',
+    roxo: '#BA35D2',
+    preto: '#171717',
+    cinzaTexto: '#777777'
+};
+
+// ==========================================
 // TEMAS
 // ==========================================
 
 const TEMAS = {
     branco: {
         nome: 'Branco',
-        fundo: '#ffffff',
-        card: '#eeeeF2',
-        texto: '#17171c',
-        secundario: '#777780',
-        borda: '#dedee5',
-        destaque: '#8050e8'
+        fundo: '#FFFFFF',
+        card: '#E7E7E7',
+        texto: '#171717',
+        secundario: '#777777',
+        borda: '#DADADA'
     },
 
     preto: {
         nome: 'Preto',
         fundo: '#111114',
-        card: '#29292f',
-        texto: '#ffffff',
-        secundario: '#b8b8c2',
-        borda: '#393941',
-        destaque: '#a477ff'
+        card: '#29292F',
+        texto: '#FFFFFF',
+        secundario: '#B8B8C2',
+        borda: '#393941'
     },
 
     roxo: {
         nome: 'Roxo',
-        fundo: '#7944b5',
-        card: '#e8dafa',
+        fundo: '#FFFFFF',
+        card: '#E8DAFA',
         texto: '#241331',
-        secundario: '#674b7d',
-        borda: '#d5b9f2',
-        destaque: '#ffffff'
+        secundario: '#674B7D',
+        borda: '#D5B9F2'
     },
 
     azul: {
         nome: 'Azul',
-        fundo: '#397ac5',
-        card: '#dcecff',
-        texto: '#142b43',
-        secundario: '#54718f',
-        borda: '#c0dcfa',
-        destaque: '#ffffff'
+        fundo: '#FFFFFF',
+        card: '#DCECFD',
+        texto: '#142B43',
+        secundario: '#54718F',
+        borda: '#C0DCFA'
     },
 
     rosa: {
         nome: 'Rosa',
-        fundo: '#d66f9c',
-        card: '#ffe2ed',
+        fundo: '#FFFFFF',
+        card: '#FFE2ED',
         texto: '#482235',
         secundario: '#946078',
-        borda: '#f4c3d8',
-        destaque: '#ffffff'
+        borda: '#F4C3D8'
     },
 
     vermelho: {
         nome: 'Vermelho',
-        fundo: '#bd454b',
-        card: '#ffe1e1',
-        texto: '#421c20',
+        fundo: '#FFFFFF',
+        card: '#FFE1E1',
+        texto: '#421C20',
         secundario: '#936064',
-        borda: '#f1c0c2',
-        destaque: '#ffffff'
+        borda: '#F1C0C2'
     }
 };
 
 // ==========================================
-// PASTAS E ARQUIVOS
+// PASTAS
 // ==========================================
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
-
-if (
-    fs.existsSync(BANNERS_DIR) &&
-    !fs.statSync(BANNERS_DIR).isDirectory()
-) {
-    throw new Error(
-        '[PERFIL] data/banners existe, mas não é uma pasta.'
-    );
-}
-
 fs.mkdirSync(BANNERS_DIR, { recursive: true });
+fs.mkdirSync(MODELOS_DIR, { recursive: true });
 
 if (!fs.existsSync(FILE)) {
     fs.writeFileSync(FILE, '{}', 'utf8');
@@ -133,8 +186,9 @@ const ajustesPendentes = new Map();
 
 function lerPerfis() {
     try {
-        const conteudo = fs.readFileSync(FILE, 'utf8');
-        return JSON.parse(conteudo);
+        return JSON.parse(
+            fs.readFileSync(FILE, 'utf8')
+        );
     } catch (erro) {
         console.error('[PERFIL] Erro ao ler perfis:', erro);
         return {};
@@ -154,10 +208,14 @@ function obterPerfil(id) {
 
     return {
         nivel: 1,
-        money: '',
+        money: 0,
+        xp: 0,
+        xpNecessario: 200,
         rank: '',
         vip: '',
         reputacao: 0,
+        badges: [],
+        parceiro: '',
         banner: '',
         descricao: '',
         tema: 'branco',
@@ -179,12 +237,20 @@ function salvarPerfil(id, perfil) {
 }
 
 // ==========================================
-// UTILITÁRIOS DE CANVAS
+// UTILITÁRIOS
 // ==========================================
 
-function arredondar(ctx, x, y, w, h, r) {
+function arredondar(ctx, x, y, largura, altura, raio) {
     ctx.beginPath();
-    ctx.roundRect(x, y, w, h, r);
+
+    ctx.roundRect(
+        x,
+        y,
+        largura,
+        altura,
+        raio
+    );
+
     ctx.closePath();
 }
 
@@ -195,25 +261,49 @@ function desenharTexto(
     y,
     tamanho,
     cor,
-    fonte = 'normal'
+    peso = 'normal',
+    alinhamento = 'left'
 ) {
     ctx.fillStyle = cor;
-    ctx.font = `${fonte} ${tamanho}px Arial`;
+    ctx.font = `${peso} ${tamanho}px Arial`;
+    ctx.textAlign = alinhamento;
+    ctx.textBaseline = 'alphabetic';
 
-    ctx.fillText(String(texto), x, y);
+    ctx.fillText(
+        String(texto ?? ''),
+        x,
+        y
+    );
+
+    ctx.textAlign = 'left';
 }
 
-function textoLimitado(ctx, texto, x, y, maxWidth) {
-    let resultado = String(texto || '');
+function desenharEmoji(ctx, emoji, x, y, tamanho) {
+    ctx.save();
 
-    while (
-        resultado.length > 3 &&
-        ctx.measureText(resultado).width > maxWidth
-    ) {
-        resultado = resultado.slice(0, -4) + '...';
+    ctx.font = `${tamanho}px Arial`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    ctx.fillText(emoji, x, y);
+
+    ctx.restore();
+}
+
+// ==========================================
+// CARREGAR MODELO DO CANVA
+// ==========================================
+
+async function carregarModelo() {
+    if (!fs.existsSync(TEMPLATE)) {
+        throw new Error(
+            'Imagem-base não encontrada. Coloque perfil-base.png em data/modelos/.'
+        );
     }
 
-    ctx.fillText(resultado, x, y);
+    return loadImage(
+        fs.readFileSync(TEMPLATE)
+    );
 }
 
 // ==========================================
@@ -274,19 +364,23 @@ async function baixarESalvarBanner(anexo) {
         await resposta.arrayBuffer()
     );
 
-    if (!buffer.length || buffer.length > MAX_BANNER_SIZE) {
+    if (
+        !buffer.length ||
+        buffer.length > MAX_BANNER_SIZE
+    ) {
         throw new Error(
-            'A imagem está vazia ou ultrapassa o limite de 8 MB.'
+            'A imagem está vazia ou ultrapassa 8 MB.'
         );
     }
 
-    // Verifica se a imagem pode ser aberta.
     await loadImage(buffer);
 
     const nomeArquivo = `${crypto.randomUUID()}${extensao}`;
-    const caminho = path.join(BANNERS_DIR, nomeArquivo);
 
-    fs.writeFileSync(caminho, buffer);
+    fs.writeFileSync(
+        path.join(BANNERS_DIR, nomeArquivo),
+        buffer
+    );
 
     return nomeArquivo;
 }
@@ -304,40 +398,37 @@ async function carregarBanner(nomeArquivo) {
         throw new Error('Nome de arquivo inválido.');
     }
 
-    const caminho = path.join(BANNERS_DIR, nomeSeguro);
+    const caminho = path.join(
+        BANNERS_DIR,
+        nomeSeguro
+    );
 
     if (!fs.existsSync(caminho)) {
         throw new Error('Banner não encontrado.');
     }
 
-    return loadImage(fs.readFileSync(caminho));
+    return loadImage(
+        fs.readFileSync(caminho)
+    );
 }
 
 // ==========================================
-// DESENHAR BANNER COM ENQUADRAMENTO
+// DESENHAR BANNER SOBRE O MODELO
 // ==========================================
 
-function desenharBanner(
-    ctx,
-    imagem,
-    x,
-    y,
-    largura,
-    altura,
-    crop = {}
-) {
+function desenharBanner(ctx, imagem, crop = {}) {
     const zoom = Math.max(
         1,
         Math.min(3, Number(crop.zoom) || 1)
     );
 
     const proporcao = Math.max(
-        largura / imagem.width,
-        altura / imagem.height
+        BANNER.largura / imagem.width,
+        BANNER.altura / imagem.height
     );
 
-    const larguraBase = largura / proporcao;
-    const alturaBase = altura / proporcao;
+    const larguraBase = BANNER.largura / proporcao;
+    const alturaBase = BANNER.altura / proporcao;
 
     const larguraFonte = larguraBase / zoom;
     const alturaFonte = alturaBase / zoom;
@@ -365,7 +456,29 @@ function desenharBanner(
 
     ctx.save();
 
-    arredondar(ctx, x, y, largura, altura, 24);
+    ctx.beginPath();
+
+    ctx.moveTo(0, 0);
+    ctx.lineTo(LARGURA, 0);
+    ctx.lineTo(LARGURA, BANNER.altura - 42);
+
+    ctx.quadraticCurveTo(
+        LARGURA,
+        BANNER.altura,
+        LARGURA - 42,
+        BANNER.altura
+    );
+
+    ctx.lineTo(42, BANNER.altura);
+
+    ctx.quadraticCurveTo(
+        0,
+        BANNER.altura,
+        0,
+        BANNER.altura - 42
+    );
+
+    ctx.closePath();
     ctx.clip();
 
     ctx.drawImage(
@@ -374,63 +487,380 @@ function desenharBanner(
         sy,
         larguraFonte,
         alturaFonte,
-        x,
-        y,
-        largura,
-        altura
+        0,
+        0,
+        BANNER.largura,
+        BANNER.altura
     );
 
     ctx.restore();
 }
 
 // ==========================================
-// ESTADO CIVIL E VIP
+// AVATAR DO DISCORD
 // ==========================================
 
-function obterEstadoCivil(member) {
-    if (!member) return 'Não informado';
+async function desenharAvatar(ctx, user) {
+    const avatar = await loadImage(
+        user.displayAvatarURL({
+            extension: 'png',
+            size: 512
+        })
+    );
 
-    if (member.roles.cache.has(CARGO_NAMORADO)) {
-        return 'Namorado';
-    }
+    ctx.save();
 
-    if (member.roles.cache.has(CARGO_SOLTEIRO)) {
-        return 'Solteiro';
-    }
+    ctx.beginPath();
 
-    return 'Não informado';
-}
+    ctx.arc(
+        AVATAR.x,
+        AVATAR.y,
+        AVATAR.raio,
+        0,
+        Math.PI * 2
+    );
 
-function obterVIP(member) {
-    if (!CARGO_VIP || !member) {
-        return 'Não possui VIP';
-    }
+    ctx.clip();
 
-    return member.roles.cache.has(CARGO_VIP)
-        ? 'Possui VIP'
-        : 'Não possui VIP';
+    ctx.drawImage(
+        avatar,
+        AVATAR.x - AVATAR.raio,
+        AVATAR.y - AVATAR.raio,
+        AVATAR.raio * 2,
+        AVATAR.raio * 2
+    );
+
+    ctx.restore();
 }
 
 // ==========================================
-// GERAR IMAGEM DO PERFIL
+// NOME DE EXIBIÇÃO
+// ==========================================
+
+function desenharNome(ctx, user, tema) {
+    ctx.fillStyle = tema.card;
+
+    arredondar(
+        ctx,
+        NOME.x,
+        NOME.y,
+        NOME.largura,
+        NOME.altura,
+        25
+    );
+
+    ctx.fill();
+
+    const nome = user.globalName || user.username;
+
+    ctx.save();
+
+    ctx.font = 'bold 48px Arial';
+
+    let tamanho = 48;
+
+    while (
+        ctx.measureText(nome).width >
+        NOME.largura - 35 &&
+        tamanho > 22
+    ) {
+        tamanho -= 2;
+        ctx.font = `bold ${tamanho}px Arial`;
+    }
+
+    ctx.restore();
+
+    desenharTexto(
+        ctx,
+        nome,
+        NOME.x + NOME.largura / 2,
+        NOME.y + 52,
+        tamanho,
+        tema.texto,
+        'bold',
+        'center'
+    );
+}
+
+// ==========================================
+// DESCRIÇÃO
+// ==========================================
+
+function desenharDescricao(ctx, perfil, tema) {
+    const descricao = perfil.descricao || 'Sem descrição...';
+
+    ctx.save();
+
+    ctx.font = 'bold 34px Arial';
+
+    let tamanho = 34;
+
+    while (
+        ctx.measureText(descricao).width > 770 &&
+        tamanho > 18
+    ) {
+        tamanho -= 2;
+        ctx.font = `bold ${tamanho}px Arial`;
+    }
+
+    ctx.restore();
+
+    desenharTexto(
+        ctx,
+        descricao,
+        56,
+        610,
+        tamanho,
+        tema.texto,
+        'bold'
+    );
+
+    ctx.beginPath();
+    ctx.moveTo(55, 625);
+    ctx.lineTo(830, 625);
+
+    ctx.strokeStyle = tema.borda;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+}
+
+// ==========================================
+// ÍCONES
+// ==========================================
+
+function desenharIcone(ctx, tipo, x, y) {
+    ctx.save();
+
+    ctx.fillStyle = CORES.roxo;
+
+    arredondar(
+        ctx,
+        x,
+        y,
+        88,
+        88,
+        [25, 0, 0, 25]
+    );
+
+    ctx.fill();
+
+    const icones = {
+        coins: '🪙',
+        nivel: '⭐',
+        badges: '🏅',
+        reps: '👍',
+        casado: '🕊️'
+    };
+
+    desenharEmoji(
+        ctx,
+        icones[tipo] || '✨',
+        x + 44,
+        y + 44,
+        53
+    );
+
+    if (tipo === 'reps') {
+        desenharEmoji(
+            ctx,
+            '⭐',
+            x + 17,
+            y + 17,
+            20
+        );
+    }
+
+    if (tipo === 'casado') {
+        desenharEmoji(
+            ctx,
+            '💗',
+            x + 20,
+            y + 18,
+            19
+        );
+    }
+
+    ctx.restore();
+}
+
+// ==========================================
+// CARTÃO INDIVIDUAL
+// ==========================================
+
+function desenharCartao(
+    ctx,
+    x,
+    y,
+    titulo,
+    valor,
+    tipo,
+    tema
+) {
+    const largura = CARTOES.largura;
+    const altura = CARTOES.altura;
+
+    // FUNDO BRANCO
+    ctx.fillStyle = '#FFFFFF';
+
+    arredondar(
+        ctx,
+        x,
+        y,
+        largura,
+        altura,
+        55
+    );
+
+    ctx.fill();
+
+    // ÍCONE ROXO
+    desenharIcone(
+        ctx,
+        tipo,
+        x,
+        y + 11
+    );
+
+    // TEXTO
+    const textoX = x + 125;
+
+    desenharTexto(
+        ctx,
+        titulo,
+        textoX,
+        y + 52,
+        31,
+        '#171717',
+        'bold'
+    );
+
+    desenharTexto(
+        ctx,
+        valor,
+        textoX,
+        y + 86,
+        25,
+        '#171717',
+        'bold'
+    );
+}
+
+// ==========================================
+// PAINEL DE INFORMAÇÕES
+// ==========================================
+
+function desenharPainel(ctx, perfil, member, tema) {
+    // O FUNDO CINZA VEM DA IMAGEM-BASE.
+    // NÃO DESENHAMOS OUTRO PAINEL POR CIMA.
+
+    const nivel = Number(perfil.nivel) || 1;
+    const money = Number(perfil.money) || 0;
+    const xp = Number(perfil.xp) || 0;
+    const xpNecessario = Number(perfil.xpNecessario) || 200;
+    const reputacao = Number(perfil.reputacao) || 0;
+
+    const badges = Array.isArray(perfil.badges)
+        ? perfil.badges
+        : [];
+
+    const estadoCivil = obterEstadoCivil(member);
+
+    const parceiro = perfil.parceiro || 'Não informado';
+
+    // PRIMEIRA LINHA
+    desenharCartao(
+        ctx,
+        CARTOES.x1,
+        CARTOES.y1,
+        money.toLocaleString('pt-BR'),
+        'Coins',
+        'coins',
+        tema
+    );
+
+    desenharCartao(
+        ctx,
+        CARTOES.x2,
+        CARTOES.y1,
+        `Nível: ${nivel}`,
+        `${xp}/${xpNecessario}`,
+        'nivel',
+        tema
+    );
+
+    // SEGUNDA LINHA
+    desenharCartao(
+        ctx,
+        CARTOES.x1,
+        CARTOES.y2,
+        'Badges',
+        String(badges.length),
+        'badges',
+        tema
+    );
+
+    desenharCartao(
+        ctx,
+        CARTOES.x2,
+        CARTOES.y2,
+        'Reps',
+        String(reputacao),
+        'reps',
+        tema
+    );
+
+    // TERCEIRA LINHA
+    desenharCartao(
+        ctx,
+        CARTOES.x1,
+        CARTOES.y3,
+        estadoCivil === 'Namorado'
+            ? 'Casado(a)'
+            : estadoCivil,
+        parceiro,
+        'casado',
+        tema
+    );
+}
+
+// ==========================================
+// GERAR PERFIL
 // ==========================================
 
 async function gerarImagem(user, perfil, member = null) {
-    const canvas = createCanvas(1200, 700);
+    const canvas = createCanvas(
+        LARGURA,
+        ALTURA
+    );
+
     const ctx = canvas.getContext('2d');
 
     const tema = TEMAS[perfil.tema] || TEMAS.branco;
 
-    // FUNDO
-    ctx.fillStyle = tema.fundo;
-    ctx.fillRect(0, 0, 1200, 700);
+    // CARREGAR MODELO ORIGINAL
+    const modelo = await carregarModelo();
 
-    // BANNER
-    let banner = null;
+    // PRESERVAR TAMANHO DO MODELO
+    ctx.drawImage(
+        modelo,
+        0,
+        0,
+        LARGURA,
+        ALTURA
+    );
 
+    // SUBSTITUIR BANNER
     if (perfil.banner) {
         try {
-            banner = await carregarBanner(perfil.banner);
+            const banner = await carregarBanner(
+                perfil.banner
+            );
+
+            desenharBanner(
+                ctx,
+                banner,
+                perfil.crop
+            );
         } catch (erro) {
             console.error(
                 '[PERFIL] Erro ao carregar banner:',
@@ -439,228 +869,45 @@ async function gerarImagem(user, perfil, member = null) {
         }
     }
 
-    if (banner) {
-        desenharBanner(
-            ctx,
-            banner,
-            30,
-            30,
-            1140,
-            270,
-            perfil.crop
-        );
-    } else {
-        const gradiente = ctx.createLinearGradient(
-            30,
-            30,
-            1170,
-            300
-        );
-
-        gradiente.addColorStop(0, '#7043aa');
-        gradiente.addColorStop(1, '#26183d');
-
-        ctx.fillStyle = gradiente;
-
-        arredondar(ctx, 30, 30, 1140, 270, 24);
-        ctx.fill();
-
-        ctx.fillStyle = 'rgba(255,255,255,0.08)';
-
-        for (let i = 0; i < 8; i++) {
-            ctx.beginPath();
-
-            ctx.arc(
-                700 + i * 65,
-                60 + (i % 3) * 55,
-                80,
-                0,
-                Math.PI * 2
-            );
-
-            ctx.fill();
-        }
-    }
-
-    // AVATAR
-    try {
-        const avatar = await loadImage(
-            user.displayAvatarURL({
-                extension: 'png',
-                size: 256
-            })
-        );
-
-        ctx.save();
-
-        ctx.beginPath();
-        ctx.arc(1010, 290, 91, 0, Math.PI * 2);
-        ctx.clip();
-
-        ctx.drawImage(
-            avatar,
-            919,
-            199,
-            182,
-            182
-        );
-
-        ctx.restore();
-
-        ctx.strokeStyle = tema.fundo;
-        ctx.lineWidth = 12;
-
-        ctx.beginPath();
-        ctx.arc(1010, 290, 91, 0, Math.PI * 2);
-        ctx.stroke();
-
-    } catch (erro) {
-        console.error(
-            '[PERFIL] Erro ao carregar avatar:',
-            erro
-        );
-    }
-
-    // NOME
-    desenharTexto(
+    // SUBSTITUIR FOTO DO CÍRCULO
+    await desenharAvatar(
         ctx,
-        user.globalName || user.username,
-        65,
-        370,
-        38,
-        tema.texto
+        user
     );
 
     // DESCRIÇÃO
-    ctx.font = 'normal 21px Arial';
-    ctx.fillStyle = tema.secundario;
-
-    textoLimitado(
+    desenharDescricao(
         ctx,
-        perfil.descricao ||
-            'Este usuário ainda não adicionou uma descrição.',
-        67,
-        410,
-        1040
+        perfil,
+        tema
     );
 
     // INFORMAÇÕES
-    const estadoCivil = obterEstadoCivil(member);
-    const vip = obterVIP(member);
-
-    const cards = [
-        {
-            icone: '◉',
-            titulo: 'Money',
-            valor: perfil.money || '0'
-        },
-        {
-            icone: '★',
-            titulo: 'Nível',
-            valor: String(perfil.nivel || 1)
-        },
-        {
-            icone: '✦',
-            titulo: 'VIP',
-            valor: vip
-        },
-        {
-            icone: '♡',
-            titulo: 'Estado civil',
-            valor: estadoCivil
-        },
-        {
-            icone: '♧',
-            titulo: 'Reputação',
-            valor: String(perfil.reputacao || 0)
-        }
-    ];
-
-    const cardW = 345;
-    const cardH = 105;
-    const gapX = 22;
-    const gapY = 18;
-    const startX = 65;
-    const startY = 450;
-
-    cards.forEach((card, i) => {
-        const coluna = i % 3;
-        const linha = Math.floor(i / 3);
-
-        const x = startX + coluna * (cardW + gapX);
-        const y = startY + linha * (cardH + gapY);
-
-        ctx.fillStyle = tema.card;
-
-        arredondar(
-            ctx,
-            x,
-            y,
-            cardW,
-            cardH,
-            18
-        );
-
-        ctx.fill();
-
-        ctx.strokeStyle = tema.borda;
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-        desenharTexto(
-            ctx,
-            card.icone,
-            x + 20,
-            y + 42,
-            30,
-            tema.destaque === '#ffffff'
-                ? tema.texto
-                : tema.destaque
-        );
-
-        desenharTexto(
-            ctx,
-            card.titulo,
-            x + 65,
-            y + 35,
-            17,
-            tema.secundario
-        );
-
-        ctx.fillStyle = tema.texto;
-        ctx.font = 'normal 23px Arial';
-
-        textoLimitado(
-            ctx,
-            card.valor,
-            x + 65,
-            y + 70,
-            cardW - 85
-        );
-    });
-
-    // RODAPÉ
-    desenharTexto(
+    desenharPainel(
         ctx,
-        'ZODÍACO • PROFILE',
-        65,
-        685,
-        15,
-        tema.secundario
+        perfil,
+        member,
+        tema
+    );
+
+    // NOME
+    desenharNome(
+        ctx,
+        user,
+        tema
     );
 
     return canvas.toBuffer('image/png');
 }
 
 // ==========================================
-// CONTROLES DO ENQUADRAMENTO
+// BOTÕES DE ENQUADRAMENTO
 // ==========================================
 
 function criarBotoesCrop(usuarioId) {
     const prefixo = `perfil_crop_${usuarioId}_`;
 
     return [
-        // PRIMEIRA LINHA: 5 BOTÕES
         new ActionRowBuilder().addComponents(
             new ButtonBuilder()
                 .setCustomId(`${prefixo}cima`)
@@ -688,7 +935,6 @@ function criarBotoesCrop(usuarioId) {
                 .setStyle(ButtonStyle.Secondary)
         ),
 
-        // SEGUNDA LINHA
         new ActionRowBuilder().addComponents(
             new ButtonBuilder()
                 .setCustomId(`${prefixo}mais`)
@@ -701,7 +947,6 @@ function criarBotoesCrop(usuarioId) {
                 .setStyle(ButtonStyle.Secondary)
         ),
 
-        // TERCEIRA LINHA
         new ActionRowBuilder().addComponents(
             new ButtonBuilder()
                 .setCustomId(`${prefixo}cancelar`)
@@ -721,7 +966,9 @@ function criarBotoesCrop(usuarioId) {
 // ==========================================
 
 async function atualizarPreviewCrop(interaction, estado) {
-    const perfil = obterPerfil(interaction.user.id);
+    const perfil = obterPerfil(
+        interaction.user.id
+    );
 
     perfil.banner = estado.banner;
     perfil.crop = estado.crop;
@@ -741,17 +988,18 @@ async function atualizarPreviewCrop(interaction, estado) {
 
     return interaction.update({
         content:
-            '🖼️ Ajuste o enquadramento do seu banner.\n' +
-            'Use as setas para mover a imagem e os botões + e − para ajustar o zoom.\n' +
-            'Quando estiver satisfeito, clique em Confirmar.',
+            '🖼️ Ajuste o enquadramento do banner.\n' +
+            'Use as setas para mover a imagem e + ou − para ajustar o zoom.',
         files: [attachment],
         attachments: [],
-        components: criarBotoesCrop(interaction.user.id)
+        components: criarBotoesCrop(
+            interaction.user.id
+        )
     });
 }
 
 // ==========================================
-// RECEBER IMAGEM NO SERVIDOR
+// RECEBER IMAGEM
 // ==========================================
 
 async function receberImagemBanner(mensagem) {
@@ -769,9 +1017,10 @@ async function receberImagemBanner(mensagem) {
         return false;
     }
 
-    // VERIFICAR TEMPO
     if (Date.now() > pendente.expiraEm) {
-        enviosPendentes.delete(mensagem.author.id);
+        enviosPendentes.delete(
+            mensagem.author.id
+        );
 
         await mensagem.reply(
             '⌛ O tempo para enviar o banner acabou. Abra `/perfil` e tente novamente.'
@@ -780,7 +1029,6 @@ async function receberImagemBanner(mensagem) {
         return true;
     }
 
-    // PROCURAR IMAGENS
     const imagens = [
         ...mensagem.attachments.values()
     ].filter(anexo => {
@@ -810,16 +1058,21 @@ async function receberImagemBanner(mensagem) {
         return true;
     }
 
-    enviosPendentes.delete(mensagem.author.id);
+    enviosPendentes.delete(
+        mensagem.author.id
+    );
 
     let nomeArquivo = null;
     let painelEnviado = false;
 
     try {
-        // BAIXAR E SALVAR IMAGEM
-        nomeArquivo = await baixarESalvarBanner(imagem);
+        nomeArquivo = await baixarESalvarBanner(
+            imagem
+        );
 
-        const perfil = obterPerfil(mensagem.author.id);
+        const perfil = obterPerfil(
+            mensagem.author.id
+        );
 
         const cropInicial = {
             x: 0,
@@ -827,12 +1080,10 @@ async function receberImagemBanner(mensagem) {
             zoom: 1
         };
 
-        // BUSCAR MEMBRO
         const membro = await mensagem.guild.members
             .fetch(mensagem.author.id)
             .catch(() => null);
 
-        // GERAR PRÉVIA
         const imagemPreview = await gerarImagem(
             mensagem.author,
             {
@@ -850,37 +1101,29 @@ async function receberImagemBanner(mensagem) {
             }
         );
 
-        // ENVIAR PAINEL ANTES DE APAGAR A MENSAGEM
-        const painel = await mensagem.channel.send({
+        await mensagem.channel.send({
             content:
                 `<@${mensagem.author.id}> ✅ Imagem recebida!\n\n` +
-                '🖼️ Agora ajuste o enquadramento do seu banner.\n' +
-                'Use as setas para mover a imagem e os botões + e − para ajustar o zoom.',
+                'Ajuste o enquadramento do seu banner.',
             files: [attachment],
-            components: criarBotoesCrop(mensagem.author.id)
+            components: criarBotoesCrop(
+                mensagem.author.id
+            )
         });
 
         painelEnviado = true;
 
-        // REGISTRAR AJUSTE
-        ajustesPendentes.set(mensagem.author.id, {
-            banner: nomeArquivo,
-            crop: cropInicial,
-            guildId: mensagem.guild.id,
-            criadoEm: Date.now()
-        });
-
-        // APAGAR A MENSAGEM ORIGINAL DEPOIS DO ENVIO
-        await mensagem.delete().catch(erro => {
-            console.warn(
-                '[PERFIL] Não foi possível apagar a mensagem original:',
-                erro.message
-            );
-        });
-
-        console.log(
-            `[PERFIL] Banner recebido de ${mensagem.author.username}. Painel: ${painel.id}`
+        ajustesPendentes.set(
+            mensagem.author.id,
+            {
+                banner: nomeArquivo,
+                crop: cropInicial,
+                guildId: mensagem.guild.id,
+                criadoEm: Date.now()
+            }
         );
+
+        await mensagem.delete().catch(() => null);
 
     } catch (erro) {
         console.error(
@@ -900,12 +1143,14 @@ async function receberImagemBanner(mensagem) {
                 }
             }
 
-            ajustesPendentes.delete(mensagem.author.id);
+            ajustesPendentes.delete(
+                mensagem.author.id
+            );
 
             await mensagem.reply({
                 content:
                     `❌ Não consegui processar essa imagem: ${erro.message}\n` +
-                    'Sua mensagem original foi mantida. Tente novamente.'
+                    'Sua mensagem original foi mantida.'
             }).catch(() => null);
         }
     }
@@ -935,13 +1180,11 @@ module.exports = {
 
         const perfil = obterPerfil(user.id);
 
-        let member = null;
-
-        if (interaction.guild) {
-            member = await interaction.guild.members
+        const member = interaction.guild
+            ? await interaction.guild.members
                 .fetch(user.id)
-                .catch(() => null);
-        }
+                .catch(() => null)
+            : null;
 
         const imagem = await gerarImagem(
             user,
@@ -974,7 +1217,7 @@ module.exports = {
     },
 
     // ========================================
-    // RECEBER IMAGENS
+    // RECEBER MENSAGENS
     // ========================================
 
     async handleMessage(mensagem) {
@@ -987,10 +1230,7 @@ module.exports = {
 
     async handleInteraction(interaction) {
 
-        // ======================================
         // ABRIR EDIÇÃO
-        // ======================================
-
         if (
             interaction.isButton() &&
             interaction.customId === 'perfil_abrir_edicao'
@@ -1025,10 +1265,7 @@ module.exports = {
             });
         }
 
-        // ======================================
         // ESCOLHER OPÇÃO
-        // ======================================
-
         if (
             interaction.isStringSelectMenu() &&
             interaction.customId === 'perfil_editar_opcao'
@@ -1044,18 +1281,20 @@ module.exports = {
                     });
                 }
 
-                enviosPendentes.set(interaction.user.id, {
-                    guildId: interaction.guild.id,
-                    expiraEm: Date.now() + TEMPO_ENVIO_BANNER
-                });
+                enviosPendentes.set(
+                    interaction.user.id,
+                    {
+                        guildId: interaction.guild.id,
+                        expiraEm: Date.now() + TEMPO_ENVIO_BANNER
+                    }
+                );
 
                 return interaction.reply({
                     content:
                         '🖼️ **Envie seu banner em qualquer canal deste servidor!**\n\n' +
-                        '• Formatos: PNG, JPG, WEBP ou GIF.\n' +
-                        '• Tamanho máximo: 8 MB.\n' +
-                        '• Você tem 2 minutos para enviar.\n\n' +
-                        'Depois, você poderá ajustar a posição e o zoom antes de salvar.',
+                        '• PNG, JPG, WEBP ou GIF.\n' +
+                        '• Máximo de 8 MB.\n' +
+                        '• Você tem 2 minutos para enviar.',
                     flags: MessageFlags.Ephemeral
                 });
             }
@@ -1103,10 +1342,7 @@ module.exports = {
             return interaction.showModal(modal);
         }
 
-        // ======================================
         // ESCOLHER TEMA
-        // ======================================
-
         if (
             interaction.isStringSelectMenu() &&
             interaction.customId === 'perfil_escolher_tema'
@@ -1120,11 +1356,16 @@ module.exports = {
                 });
             }
 
-            const perfil = obterPerfil(interaction.user.id);
+            const perfil = obterPerfil(
+                interaction.user.id
+            );
 
             perfil.tema = tema;
 
-            salvarPerfil(interaction.user.id, perfil);
+            salvarPerfil(
+                interaction.user.id,
+                perfil
+            );
 
             return interaction.update({
                 content:
@@ -1133,10 +1374,7 @@ module.exports = {
             });
         }
 
-        // ======================================
-        // AJUSTE DO BANNER
-        // ======================================
-
+        // AJUSTAR BANNER
         if (
             interaction.isButton() &&
             interaction.customId.startsWith('perfil_crop_')
@@ -1146,7 +1384,6 @@ module.exports = {
             const usuarioId = partes[2];
             const acao = partes[3];
 
-            // VERIFICAR DONO DO AJUSTE
             if (usuarioId !== interaction.user.id) {
                 return interaction.reply({
                     content:
@@ -1171,7 +1408,9 @@ module.exports = {
                 Date.now() - estado.criadoEm >
                 TEMPO_ENVIO_BANNER
             ) {
-                ajustesPendentes.delete(interaction.user.id);
+                ajustesPendentes.delete(
+                    interaction.user.id
+                );
 
                 return interaction.reply({
                     content:
@@ -1182,7 +1421,9 @@ module.exports = {
 
             // CANCELAR
             if (acao === 'cancelar') {
-                ajustesPendentes.delete(interaction.user.id);
+                ajustesPendentes.delete(
+                    interaction.user.id
+                );
 
                 return interaction.update({
                     content:
@@ -1194,7 +1435,9 @@ module.exports = {
 
             // CONFIRMAR
             if (acao === 'confirmar') {
-                const perfil = obterPerfil(interaction.user.id);
+                const perfil = obterPerfil(
+                    interaction.user.id
+                );
 
                 perfil.banner = estado.banner;
                 perfil.crop = estado.crop;
@@ -1204,7 +1447,9 @@ module.exports = {
                     perfil
                 );
 
-                ajustesPendentes.delete(interaction.user.id);
+                ajustesPendentes.delete(
+                    interaction.user.id
+                );
 
                 return interaction.update({
                     content:
@@ -1214,24 +1459,13 @@ module.exports = {
                 });
             }
 
-            // MOVIMENTAÇÃO E ZOOM
+            // MOVIMENTAR
             const passo = 0.05;
 
-            if (acao === 'cima') {
-                estado.crop.y -= passo;
-            }
-
-            if (acao === 'baixo') {
-                estado.crop.y += passo;
-            }
-
-            if (acao === 'esquerda') {
-                estado.crop.x -= passo;
-            }
-
-            if (acao === 'direita') {
-                estado.crop.x += passo;
-            }
+            if (acao === 'cima') estado.crop.y -= passo;
+            if (acao === 'baixo') estado.crop.y += passo;
+            if (acao === 'esquerda') estado.crop.x -= passo;
+            if (acao === 'direita') estado.crop.x += passo;
 
             if (acao === 'mais') {
                 estado.crop.zoom = Math.min(
@@ -1255,7 +1489,6 @@ module.exports = {
                 };
             }
 
-            // LIMITES DO ENQUADRAMENTO
             estado.crop.x = Math.max(
                 -0.45,
                 Math.min(0.45, estado.crop.x)
@@ -1272,10 +1505,7 @@ module.exports = {
             );
         }
 
-        // ======================================
         // SALVAR DESCRIÇÃO
-        // ======================================
-
         if (
             interaction.isModalSubmit() &&
             interaction.customId === 'perfil_modal_descricao'
@@ -1291,7 +1521,9 @@ module.exports = {
                 });
             }
 
-            const perfil = obterPerfil(interaction.user.id);
+            const perfil = obterPerfil(
+                interaction.user.id
+            );
 
             perfil.descricao = valor;
 
