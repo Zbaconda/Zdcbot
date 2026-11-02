@@ -1007,4 +1007,620 @@ function criarBotoesCrop(usuarioId) {
             new ButtonBuilder()
                 .setCustomId(`${prefixo}menos`)
                 .setLabel('−')
-               
+                .setStyle(ButtonStyle.Secondary)
+        ),
+
+        new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`${prefixo}mais`)
+                .setLabel('+')
+                .setStyle(ButtonStyle.Secondary),
+
+            new ButtonBuilder()
+                .setCustomId(`${prefixo}resetar`)
+                .setLabel('Resetar')
+                .setStyle(ButtonStyle.Secondary)
+        ),
+
+        new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`${prefixo}cancelar`)
+                .setLabel('Cancelar')
+                .setStyle(ButtonStyle.Danger),
+
+            new ButtonBuilder()
+                .setCustomId(`${prefixo}confirmar`)
+                .setLabel('Confirmar')
+                .setStyle(ButtonStyle.Success)
+        )
+    ];
+}
+
+// ==========================================
+// ATUALIZAR PRÉVIA
+// ==========================================
+
+async function atualizarPreviewCrop(interaction, estado) {
+    const perfil = obterPerfil(interaction.user.id);
+
+    perfil.banner = estado.banner;
+    perfil.crop = estado.crop;
+
+    const imagem = await gerarImagem(
+        interaction.user,
+        perfil,
+        interaction.member
+    );
+
+    const attachment = new AttachmentBuilder(
+        imagem,
+        {
+            name: 'previa-perfil.png'
+        }
+    );
+
+    return interaction.update({
+        content:
+            '🖼️ Ajuste o enquadramento do banner.\n' +
+            'Use as setas para mover a imagem e + ou − para ajustar o zoom.',
+        files: [attachment],
+        attachments: [],
+        components: criarBotoesCrop(interaction.user.id)
+    });
+}
+
+// ==========================================
+// RECEBER IMAGEM
+// ==========================================
+
+async function receberImagemBanner(mensagem) {
+    if (mensagem.author.bot || !mensagem.guild) {
+        return false;
+    }
+
+    const pendente = enviosPendentes.get(mensagem.author.id);
+
+    if (!pendente) return false;
+
+    if (mensagem.guild.id !== pendente.guildId) {
+        return false;
+    }
+
+    if (Date.now() > pendente.expiraEm) {
+        enviosPendentes.delete(mensagem.author.id);
+
+        await mensagem.reply(
+            '⌛ O tempo para enviar o banner acabou. Abra `/perfil` e tente novamente.'
+        ).catch(() => null);
+
+        return true;
+    }
+
+    const imagens = [
+        ...mensagem.attachments.values()
+    ].filter(anexo => {
+        const tipo = anexo.contentType || '';
+
+        return (
+            tipo.startsWith('image/') ||
+            /\.(png|jpe?g|gif|webp)$/i.test(anexo.name || '')
+        );
+    });
+
+    if (!imagens.length) {
+        await mensagem.reply(
+            '🖼️ Envie uma imagem PNG, JPG, WEBP ou GIF.'
+        ).catch(() => null);
+
+        return true;
+    }
+
+    const imagem = imagens[0];
+
+    if (imagem.size > MAX_BANNER_SIZE) {
+        await mensagem.reply(
+            '❌ Essa imagem ultrapassa o limite de 8 MB.'
+        ).catch(() => null);
+
+        return true;
+    }
+
+    enviosPendentes.delete(mensagem.author.id);
+
+    let nomeArquivo = null;
+    let painelEnviado = false;
+
+    try {
+        nomeArquivo = await baixarESalvarBanner(imagem);
+
+        const perfil = obterPerfil(mensagem.author.id);
+
+        const cropInicial = {
+            x: 0,
+            y: 0,
+            zoom: 1
+        };
+
+        const membro = await mensagem.guild.members
+            .fetch(mensagem.author.id)
+            .catch(() => null);
+
+        const imagemPreview = await gerarImagem(
+            mensagem.author,
+            {
+                ...perfil,
+                banner: nomeArquivo,
+                crop: cropInicial
+            },
+            membro
+        );
+
+        const attachment = new AttachmentBuilder(
+            imagemPreview,
+            {
+                name: 'previa-perfil.png'
+            }
+        );
+
+        await mensagem.channel.send({
+            content:
+                `<@${mensagem.author.id}> ✅ Imagem recebida!\n\n` +
+                'Ajuste o enquadramento do seu banner.',
+            files: [attachment],
+            components: criarBotoesCrop(mensagem.author.id)
+        });
+
+        painelEnviado = true;
+
+        ajustesPendentes.set(
+            mensagem.author.id,
+            {
+                banner: nomeArquivo,
+                crop: cropInicial,
+                guildId: mensagem.guild.id,
+                criadoEm: Date.now()
+            }
+        );
+
+        await mensagem.delete().catch(() => null);
+
+    } catch (erro) {
+        console.error(
+            '[PERFIL] Erro ao receber banner:',
+            erro
+        );
+
+        if (!painelEnviado) {
+            if (nomeArquivo) {
+                const caminho = path.join(
+                    BANNERS_DIR,
+                    nomeArquivo
+                );
+
+                if (fs.existsSync(caminho)) {
+                    fs.unlinkSync(caminho);
+                }
+            }
+
+            ajustesPendentes.delete(mensagem.author.id);
+
+            await mensagem.reply({
+                content:
+                    `❌ Não consegui processar essa imagem: ${erro.message}\n` +
+                    'Sua mensagem original foi mantida.'
+            }).catch(() => null);
+        }
+    }
+
+    return true;
+}
+
+// ==========================================
+// COMANDO /PERFIL
+// ==========================================
+
+module.exports = {
+    data: new SlashCommandBuilder()
+        .setName('perfil')
+        .setDescription('Visualize seu perfil no Zodíaco')
+        .addUserOption(option =>
+            option
+                .setName('usuario')
+                .setDescription('Perfil de outro membro')
+                .setRequired(false)
+        ),
+
+    async execute(interaction) {
+        const user =
+            interaction.options.getUser('usuario') ||
+            interaction.user;
+
+        const perfil = obterPerfil(user.id);
+
+        const member = interaction.guild
+            ? await interaction.guild.members
+                .fetch(user.id)
+                .catch(() => null)
+            : null;
+
+        const imagem = await gerarImagem(
+            user,
+            perfil,
+            member
+        );
+
+        const attachment = new AttachmentBuilder(
+            imagem,
+            {
+                name: 'perfil-zodiaco.png'
+            }
+        );
+
+        const rows = user.id === interaction.user.id
+            ? [
+                new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId('perfil_abrir_edicao')
+                        .setLabel('Editar')
+                        .setStyle(ButtonStyle.Secondary)
+                )
+            ]
+            : [];
+
+        return interaction.reply({
+            files: [attachment],
+            components: rows
+        });
+    },
+
+    // ========================================
+    // RECEBER MENSAGENS
+    // ========================================
+
+    async handleMessage(mensagem) {
+        return receberImagemBanner(mensagem);
+    },
+
+    // ========================================
+    // INTERAÇÕES
+    // ========================================
+
+    async handleInteraction(interaction) {
+
+        // ABRIR EDIÇÃO
+
+        if (
+            interaction.isButton() &&
+            interaction.customId === 'perfil_abrir_edicao'
+        ) {
+            return interaction.reply({
+                content: 'O que você deseja fazer?',
+                components: [
+                    new ActionRowBuilder().addComponents(
+                        new StringSelectMenuBuilder()
+                            .setCustomId('perfil_editar_opcao')
+                            .setPlaceholder('Escolha uma opção')
+                            .addOptions(
+                                {
+                                    label: 'Alterar banner',
+                                    description: 'Enviar e ajustar uma imagem',
+                                    value: 'banner'
+                                },
+                                {
+                                    label: 'Editar descrição',
+                                    description: 'Alterar a descrição do perfil',
+                                    value: 'descricao'
+                                },
+                                {
+                                    label: 'Personalizar tema',
+                                    description: 'Escolher a cor do perfil',
+                                    value: 'tema'
+                                }
+                            )
+                    )
+                ],
+                flags: MessageFlags.Ephemeral
+            });
+        }
+
+        // ESCOLHER OPÇÃO
+
+        if (
+            interaction.isStringSelectMenu() &&
+            interaction.customId === 'perfil_editar_opcao'
+        ) {
+            const tipo = interaction.values[0];
+
+            // BANNER
+
+            if (tipo === 'banner') {
+                if (!interaction.guild) {
+                    return interaction.reply({
+                        content: '❌ Abra o perfil dentro de um servidor.',
+                        flags: MessageFlags.Ephemeral
+                    });
+                }
+
+                enviosPendentes.set(
+                    interaction.user.id,
+                    {
+                        guildId: interaction.guild.id,
+                        expiraEm: Date.now() + TEMPO_ENVIO_BANNER
+                    }
+                );
+
+                return interaction.reply({
+                    content:
+                        '🖼️ **Envie seu banner em qualquer canal deste servidor!**\n\n' +
+                        '• PNG, JPG, WEBP ou GIF.\n' +
+                        '• Máximo de 8 MB.\n' +
+                        '• Você tem 2 minutos para enviar.',
+                    flags: MessageFlags.Ephemeral
+                });
+            }
+
+            // TEMA
+
+            if (tipo === 'tema') {
+                return interaction.reply({
+                    content: '**Escolha o tema do seu perfil:**',
+                    components: [
+                        new ActionRowBuilder().addComponents(
+                            new StringSelectMenuBuilder()
+                                .setCustomId('perfil_escolher_tema')
+                                .setPlaceholder('Selecione uma cor')
+                                .addOptions(
+                                    { label: 'Branco', value: 'branco' },
+                                    { label: 'Preto', value: 'preto' },
+                                    { label: 'Roxo', value: 'roxo' },
+                                    { label: 'Azul', value: 'azul' },
+                                    { label: 'Rosa', value: 'rosa' },
+                                    { label: 'Vermelho', value: 'vermelho' }
+                                )
+                        )
+                    ],
+                    flags: MessageFlags.Ephemeral
+                });
+            }
+
+            // DESCRIÇÃO
+
+            const modal = new ModalBuilder()
+                .setCustomId('perfil_modal_descricao')
+                .setTitle('Editar descrição');
+
+            const campo = new TextInputBuilder()
+                .setCustomId('valor')
+                .setLabel('Sua descrição')
+                .setStyle(TextInputStyle.Paragraph)
+                .setRequired(true)
+                .setMaxLength(180)
+                .setPlaceholder('Escreva algo sobre você...');
+
+            modal.addComponents(
+                new ActionRowBuilder().addComponents(campo)
+            );
+
+            return interaction.showModal(modal);
+        }
+
+        // ESCOLHER TEMA
+
+        if (
+            interaction.isStringSelectMenu() &&
+            interaction.customId === 'perfil_escolher_tema'
+        ) {
+            const tema = interaction.values[0];
+
+            if (!TEMAS[tema]) {
+                return interaction.reply({
+                    content: 'Tema inválido.',
+                    flags: MessageFlags.Ephemeral
+                });
+            }
+
+            const perfil = obterPerfil(interaction.user.id);
+
+            perfil.tema = tema;
+
+            salvarPerfil(
+                interaction.user.id,
+                perfil
+            );
+
+            return interaction.update({
+                content:
+                    `✅ Seu tema foi alterado para **${TEMAS[tema].nome}**!`,
+                components: []
+            });
+        }
+
+        // AJUSTAR BANNER
+
+        if (
+            interaction.isButton() &&
+            interaction.customId.startsWith('perfil_crop_')
+        ) {
+            const partes = interaction.customId.split('_');
+
+            const usuarioId = partes[2];
+            const acao = partes[3];
+
+            if (usuarioId !== interaction.user.id) {
+                return interaction.reply({
+                    content:
+                        '❌ Somente quem enviou este banner pode ajustar o enquadramento.',
+                    flags: MessageFlags.Ephemeral
+                });
+            }
+
+            const estado = ajustesPendentes.get(
+                interaction.user.id
+            );
+
+            if (!estado) {
+                return interaction.reply({
+                    content:
+                        'Esse ajuste expirou. Envie o banner novamente.',
+                    flags: MessageFlags.Ephemeral
+                });
+            }
+
+            if (
+                Date.now() - estado.criadoEm >
+                TEMPO_ENVIO_BANNER
+            ) {
+                ajustesPendentes.delete(interaction.user.id);
+
+                return interaction.reply({
+                    content:
+                        'O tempo para ajustar o banner acabou. Envie novamente.',
+                    flags: MessageFlags.Ephemeral
+                });
+            }
+
+            // CANCELAR
+
+            if (acao === 'cancelar') {
+                ajustesPendentes.delete(interaction.user.id);
+
+                const caminho = path.join(
+                    BANNERS_DIR,
+                    estado.banner
+                );
+
+                if (fs.existsSync(caminho)) {
+                    fs.unlinkSync(caminho);
+                }
+
+                return interaction.update({
+                    content:
+                        '❌ Ajuste cancelado. Seu banner anterior foi mantido.',
+                    attachments: [],
+                    components: []
+                });
+            }
+
+            // CONFIRMAR
+
+            if (acao === 'confirmar') {
+                const perfil = obterPerfil(interaction.user.id);
+
+                const bannerAnterior = perfil.banner;
+
+                perfil.banner = estado.banner;
+                perfil.crop = estado.crop;
+
+                salvarPerfil(
+                    interaction.user.id,
+                    perfil
+                );
+
+                ajustesPendentes.delete(interaction.user.id);
+
+                // Remove o banner anterior, se houver.
+                if (
+                    bannerAnterior &&
+                    bannerAnterior !== estado.banner
+                ) {
+                    const caminhoAnterior = path.join(
+                        BANNERS_DIR,
+                        path.basename(bannerAnterior)
+                    );
+
+                    if (fs.existsSync(caminhoAnterior)) {
+                        fs.unlinkSync(caminhoAnterior);
+                    }
+                }
+
+                return interaction.update({
+                    content:
+                        '✅ **Seu novo banner foi salvo no perfil!**',
+                    attachments: [],
+                    components: []
+                });
+            }
+
+            // MOVIMENTAR
+
+            const passo = 0.05;
+
+            if (acao === 'cima') estado.crop.y -= passo;
+            if (acao === 'baixo') estado.crop.y += passo;
+            if (acao === 'esquerda') estado.crop.x -= passo;
+            if (acao === 'direita') estado.crop.x += passo;
+
+            if (acao === 'mais') {
+                estado.crop.zoom = Math.min(
+                    3,
+                    estado.crop.zoom + 0.15
+                );
+            }
+
+            if (acao === 'menos') {
+                estado.crop.zoom = Math.max(
+                    1,
+                    estado.crop.zoom - 0.15
+                );
+            }
+
+            if (acao === 'resetar') {
+                estado.crop = {
+                    x: 0,
+                    y: 0,
+                    zoom: 1
+                };
+            }
+
+            estado.crop.x = Math.max(
+                -0.45,
+                Math.min(0.45, estado.crop.x)
+            );
+
+            estado.crop.y = Math.max(
+                -0.45,
+                Math.min(0.45, estado.crop.y)
+            );
+
+            return atualizarPreviewCrop(
+                interaction,
+                estado
+            );
+        }
+
+        // SALVAR DESCRIÇÃO
+
+        if (
+            interaction.isModalSubmit() &&
+            interaction.customId === 'perfil_modal_descricao'
+        ) {
+            const valor = interaction.fields
+                .getTextInputValue('valor')
+                .trim();
+
+            if (!valor) {
+                return interaction.reply({
+                    content: 'O campo não pode ficar vazio.',
+                    flags: MessageFlags.Ephemeral
+                });
+            }
+
+            const perfil = obterPerfil(interaction.user.id);
+
+            perfil.descricao = valor;
+
+            salvarPerfil(
+                interaction.user.id,
+                perfil
+            );
+
+            return interaction.reply({
+                content:
+                    '✅ Sua descrição foi atualizada com sucesso!',
+                flags: MessageFlags.Ephemeral
+            });
+        }
+
+        return false;
+    }
+};
