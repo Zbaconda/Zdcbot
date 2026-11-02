@@ -142,7 +142,6 @@ function registrarCallTemporaria(canalId) {
 
     salvarJSON(ARQUIVO_CALLS_TEMPORARIAS, calls);
 
-    // Confirma que o registro foi salvo antes de permitir a limpeza.
     const verificacao = obterCallsTemporarias();
 
     return verificacao[canalId] === true;
@@ -302,9 +301,6 @@ function estaNaCategoriaCall(canal) {
     );
 }
 
-// Um canal só é temporário se tiver sido registrado
-// no momento em que o bot o criou.
-// Estar na categoria não é suficiente.
 function ehCallTemporaria(canal) {
     if (
         !canal ||
@@ -319,7 +315,6 @@ function ehCallTemporaria(canal) {
     return calls[canal.id] === true;
 }
 
-// Controles comuns das calls temporárias.
 function podeControlarCall(interaction, canal) {
     if (!canal || !interaction.member) {
         return false;
@@ -339,7 +334,6 @@ function podeControlarCall(interaction, canal) {
     );
 }
 
-// PRIVACIDADE PARA QUALQUER CALL DE VOZ.
 function podeAlterarPrivacidade(interaction, canal) {
     if (
         !canal ||
@@ -378,7 +372,6 @@ function cancelarTemporizadorCall(canalId) {
 // ======================================================
 
 function programarExclusaoCall(canal) {
-    // Proteção principal: sem registro, não agenda exclusão.
     if (!ehCallTemporaria(canal)) return;
 
     cancelarTemporizadorCall(canal.id);
@@ -389,7 +382,6 @@ function programarExclusaoCall(canal) {
                 .fetch(canal.id)
                 .catch(() => null);
 
-            // Confere novamente o registro antes de apagar.
             if (
                 ehCallTemporaria(atual) &&
                 atual.members.size === 0
@@ -449,7 +441,6 @@ async function criarCallTemporaria(interaction) {
 
         const canais = await guild.channels.fetch();
 
-        // Usa somente o nome de usuário, sem ID.
         const nomeSeguro = (
             membro.user.username || 'membro'
         )
@@ -461,7 +452,6 @@ async function criarCallTemporaria(interaction) {
             .replace(/^-|-$/g, '')
             .slice(0, 100) || 'membro';
 
-        // Evita nomes duplicados.
         let nome = nomeSeguro;
         let numero = 2;
 
@@ -494,9 +484,6 @@ async function criarCallTemporaria(interaction) {
             ]
         });
 
-        // Registra imediatamente o ID do canal criado pelo bot.
-        // Se não conseguir confirmar o registro, não deixa o canal
-        // sem proteção: tenta removê-lo e informa o erro.
         const registrado = registrarCallTemporaria(canal.id);
 
         if (!registrado) {
@@ -701,6 +688,7 @@ function criarBotoesPublicacao(id) {
 
     return [linha1, linha2];
 }
+
 // ======================================================
 // PUBLICAÇÕES
 // ======================================================
@@ -935,7 +923,19 @@ client.on('voiceStateUpdate', async (anterior, atual) => {
 
 client.on('messageCreate', async mensagem => {
     try {
+        // PRIMEIRO: verifica se a mensagem é um banner do perfil.
+        const comandoPerfil = client.commands.get('perfil');
+
+        if (
+            comandoPerfil?.handleMessage &&
+            await comandoPerfil.handleMessage(mensagem)
+        ) {
+            return;
+        }
+
+        // DEPOIS: processa normalmente o sistema de publicações.
         await publicarMensagem(mensagem);
+
     } catch (erro) {
         console.error('Erro em messageCreate:', erro);
     }
@@ -961,6 +961,7 @@ client.on('interactionCreate', async interaction => {
         ) {
             return;
         }
+
         // COMANDOS SLASH
         if (interaction.isChatInputCommand()) {
             const comando = client.commands.get(
@@ -1348,7 +1349,7 @@ client.on('interactionCreate', async interaction => {
 
                     return responderErro(
                         interaction,
-                        '❌ Não consegui alterar a privacidade. Confira se o bot tem Gerenciar canais.'
+                        '❌ Não consegui alterar a privacidade. Confira as permissões do bot.'
                     );
                 }
             }
