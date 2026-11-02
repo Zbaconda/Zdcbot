@@ -947,6 +947,12 @@ client.on('messageCreate', async mensagem => {
 
 client.on('interactionCreate', async interaction => {
     try {
+        // SISTEMA DE PERFIL
+        const comandoPerfil = client.commands.get('perfil');
+        if (comandoPerfil?.handleInteraction && await comandoPerfil.handleInteraction(interaction, client)) {
+            return;
+        }
+
         // SISTEMA DE TICKETS
         const comandoTicket = client.commands.get('ticket');
         if (
