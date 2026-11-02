@@ -31,7 +31,6 @@ const TEMPO_ENVIO_BANNER = 2 * 60 * 1000;
 const CARGO_NAMORADO = '1566433563887403038';
 const CARGO_SOLTEIRO = '1566433517179510904';
 
-// Configure o ID do cargo VIP futuramente.
 const CARGO_VIP = null;
 
 // ==========================================
@@ -111,7 +110,7 @@ if (
     !fs.statSync(BANNERS_DIR).isDirectory()
 ) {
     throw new Error(
-        '[PERFIL] data/banners existe, mas não é uma pasta. Renomeie ou remova esse arquivo.'
+        '[PERFIL] data/banners existe, mas não é uma pasta.'
     );
 }
 
@@ -143,16 +142,11 @@ function lerPerfis() {
 }
 
 function salvarPerfis(data) {
-    try {
-        fs.writeFileSync(
-            FILE,
-            JSON.stringify(data, null, 2),
-            'utf8'
-        );
-    } catch (erro) {
-        console.error('[PERFIL] Erro ao salvar perfis:', erro);
-        throw erro;
-    }
+    fs.writeFileSync(
+        FILE,
+        JSON.stringify(data, null, 2),
+        'utf8'
+    );
 }
 
 function obterPerfil(id) {
@@ -204,9 +198,7 @@ function desenharTexto(
     fonte = 'normal'
 ) {
     ctx.fillStyle = cor;
-
-    // Correção: utilizar crases para interpolar os valores.
-    ctx.font = `${fonte} ${tamanho}px Sans`;
+    ctx.font = `${fonte} ${tamanho}px Arial`;
 
     ctx.fillText(String(texto), x, y);
 }
@@ -288,9 +280,9 @@ async function baixarESalvarBanner(anexo) {
         );
     }
 
+    // Verifica se a imagem pode ser aberta.
     await loadImage(buffer);
 
-    // Correção: nome do arquivo com template literal.
     const nomeArquivo = `${crypto.randomUUID()}${extensao}`;
     const caminho = path.join(BANNERS_DIR, nomeArquivo);
 
@@ -536,12 +528,11 @@ async function gerarImagem(user, perfil, member = null) {
         65,
         370,
         38,
-        tema.texto,
-        'normal'
+        tema.texto
     );
 
     // DESCRIÇÃO
-    ctx.font = 'normal 21px Sans';
+    ctx.font = 'normal 21px Arial';
     ctx.fillStyle = tema.secundario;
 
     textoLimitado(
@@ -637,7 +628,7 @@ async function gerarImagem(user, perfil, member = null) {
         );
 
         ctx.fillStyle = tema.texto;
-        ctx.font = 'normal 23px Sans';
+        ctx.font = 'normal 23px Arial';
 
         textoLimitado(
             ctx,
@@ -669,6 +660,7 @@ function criarBotoesCrop(usuarioId) {
     const prefixo = `perfil_crop_${usuarioId}_`;
 
     return [
+        // PRIMEIRA LINHA: 5 BOTÕES
         new ActionRowBuilder().addComponents(
             new ButtonBuilder()
                 .setCustomId(`${prefixo}cima`)
@@ -693,20 +685,24 @@ function criarBotoesCrop(usuarioId) {
             new ButtonBuilder()
                 .setCustomId(`${prefixo}menos`)
                 .setLabel('−')
-                .setStyle(ButtonStyle.Secondary),
-
-            new ButtonBuilder()
-                .setCustomId(`${prefixo}mais`)
-                .setLabel('+')
                 .setStyle(ButtonStyle.Secondary)
         ),
 
+        // SEGUNDA LINHA
         new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`${prefixo}mais`)
+                .setLabel('+')
+                .setStyle(ButtonStyle.Secondary),
+
             new ButtonBuilder()
                 .setCustomId(`${prefixo}resetar`)
                 .setLabel('Resetar')
-                .setStyle(ButtonStyle.Secondary),
+                .setStyle(ButtonStyle.Secondary)
+        ),
 
+        // TERCEIRA LINHA
+        new ActionRowBuilder().addComponents(
             new ButtonBuilder()
                 .setCustomId(`${prefixo}cancelar`)
                 .setLabel('Cancelar')
@@ -719,6 +715,10 @@ function criarBotoesCrop(usuarioId) {
         )
     ];
 }
+
+// ==========================================
+// ATUALIZAR PRÉVIA
+// ==========================================
 
 async function atualizarPreviewCrop(interaction, estado) {
     const perfil = obterPerfil(interaction.user.id);
@@ -741,7 +741,7 @@ async function atualizarPreviewCrop(interaction, estado) {
 
     return interaction.update({
         content:
-            '🖼️ Ajuste o enquadramento do seu banner\n' +
+            '🖼️ Ajuste o enquadramento do seu banner.\n' +
             'Use as setas para mover a imagem e os botões + e − para ajustar o zoom.\n' +
             'Quando estiver satisfeito, clique em Confirmar.',
         files: [attachment],
@@ -813,23 +813,11 @@ async function receberImagemBanner(mensagem) {
     enviosPendentes.delete(mensagem.author.id);
 
     let nomeArquivo = null;
+    let painelEnviado = false;
 
     try {
+        // BAIXAR E SALVAR IMAGEM
         nomeArquivo = await baixarESalvarBanner(imagem);
-
-        // TENTAR APAGAR A MENSAGEM ORIGINAL
-        let mensagemApagada = true;
-
-        try {
-            await mensagem.delete();
-        } catch (erro) {
-            mensagemApagada = false;
-
-            console.warn(
-                '[PERFIL] Não foi possível apagar a mensagem:',
-                erro.message
-            );
-        }
 
         const perfil = obterPerfil(mensagem.author.id);
 
@@ -839,17 +827,12 @@ async function receberImagemBanner(mensagem) {
             zoom: 1
         };
 
-        ajustesPendentes.set(mensagem.author.id, {
-            banner: nomeArquivo,
-            crop: cropInicial,
-            guildId: mensagem.guild.id,
-            criadoEm: Date.now()
-        });
-
+        // BUSCAR MEMBRO
         const membro = await mensagem.guild.members
             .fetch(mensagem.author.id)
             .catch(() => null);
 
+        // GERAR PRÉVIA
         const imagemPreview = await gerarImagem(
             mensagem.author,
             {
@@ -867,18 +850,36 @@ async function receberImagemBanner(mensagem) {
             }
         );
 
-        const texto = mensagemApagada
-            ? '✅ Imagem recebida! A mensagem enviada foi apagada.\n\nAgora ajuste o enquadramento do seu banner.'
-            : '✅ Imagem recebida e salva!\n⚠️ Não consegui apagar a mensagem enviada. Verifique se o bot possui permissão para gerenciar mensagens.\n\nAgora ajuste o enquadramento do seu banner.';
-
-        await mensagem.channel.send({
-            content: `<@${mensagem.author.id}> ${texto}`,
+        // ENVIAR PAINEL ANTES DE APAGAR A MENSAGEM
+        const painel = await mensagem.channel.send({
+            content:
+                `<@${mensagem.author.id}> ✅ Imagem recebida!\n\n` +
+                '🖼️ Agora ajuste o enquadramento do seu banner.\n' +
+                'Use as setas para mover a imagem e os botões + e − para ajustar o zoom.',
             files: [attachment],
             components: criarBotoesCrop(mensagem.author.id)
         });
 
+        painelEnviado = true;
+
+        // REGISTRAR AJUSTE
+        ajustesPendentes.set(mensagem.author.id, {
+            banner: nomeArquivo,
+            crop: cropInicial,
+            guildId: mensagem.guild.id,
+            criadoEm: Date.now()
+        });
+
+        // APAGAR A MENSAGEM ORIGINAL DEPOIS DO ENVIO
+        await mensagem.delete().catch(erro => {
+            console.warn(
+                '[PERFIL] Não foi possível apagar a mensagem original:',
+                erro.message
+            );
+        });
+
         console.log(
-            `[PERFIL] Imagem recebida de ${mensagem.author.username}.`
+            `[PERFIL] Banner recebido de ${mensagem.author.username}. Painel: ${painel.id}`
         );
 
     } catch (erro) {
@@ -887,23 +888,26 @@ async function receberImagemBanner(mensagem) {
             erro
         );
 
-        if (nomeArquivo) {
-            const caminho = path.join(
-                BANNERS_DIR,
-                nomeArquivo
-            );
+        if (!painelEnviado) {
+            if (nomeArquivo) {
+                const caminho = path.join(
+                    BANNERS_DIR,
+                    nomeArquivo
+                );
 
-            if (fs.existsSync(caminho)) {
-                fs.unlinkSync(caminho);
+                if (fs.existsSync(caminho)) {
+                    fs.unlinkSync(caminho);
+                }
             }
+
+            ajustesPendentes.delete(mensagem.author.id);
+
+            await mensagem.reply({
+                content:
+                    `❌ Não consegui processar essa imagem: ${erro.message}\n` +
+                    'Sua mensagem original foi mantida. Tente novamente.'
+            }).catch(() => null);
         }
-
-        ajustesPendentes.delete(mensagem.author.id);
-
-        await mensagem.channel.send({
-            content:
-                `<@${mensagem.author.id}> ❌ Não consegui processar essa imagem: ${erro.message}`
-        }).catch(() => null);
     }
 
     return true;
