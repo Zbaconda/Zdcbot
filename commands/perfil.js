@@ -23,12 +23,6 @@ const crypto = require('node:crypto');
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
 const BANNERS_DIR = path.join(DATA_DIR, 'banners');
-const MODELOS_DIR = path.join(DATA_DIR, 'modelos');
-
-const TEMPLATE = path.join(
-    MODELOS_DIR,
-    'perfil-base.png'
-);
 
 const FILE = path.join(DATA_DIR, 'perfis.json');
 
@@ -41,13 +35,13 @@ const CARGO_SOLTEIRO = '1566433517179510904';
 const CARGO_VIP = null;
 
 // ==========================================
-// DIMENSÕES EXATAS DO MODELO
+// DIMENSÕES DO PERFIL
 // ==========================================
 
 const LARGURA = 1536;
 const ALTURA = 1195;
 
-// Área do banner
+// Banner
 const BANNER = {
     x: 0,
     y: 0,
@@ -55,14 +49,14 @@ const BANNER = {
     altura: 558
 };
 
-// Área do avatar
+// Avatar
 const AVATAR = {
     x: 1235,
     y: 480,
     raio: 238
 };
 
-// Área cinza
+// Painel
 const PAINEL = {
     x: 40,
     y: 645,
@@ -167,7 +161,6 @@ const TEMAS = {
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(BANNERS_DIR, { recursive: true });
-fs.mkdirSync(MODELOS_DIR, { recursive: true });
 
 if (!fs.existsSync(FILE)) {
     fs.writeFileSync(FILE, '{}', 'utf8');
@@ -291,19 +284,69 @@ function desenharEmoji(ctx, emoji, x, y, tamanho) {
 }
 
 // ==========================================
-// CARREGAR MODELO DO CANVA
+// ESTADO CIVIL
 // ==========================================
 
-async function carregarModelo() {
-    if (!fs.existsSync(TEMPLATE)) {
-        throw new Error(
-            'Imagem-base não encontrada. Coloque perfil-base.png em data/modelos/.'
-        );
+function obterEstadoCivil(member) {
+    if (!member) {
+        return 'Estado civil';
     }
 
-    return loadImage(
-        fs.readFileSync(TEMPLATE)
+    const cargos = member.roles.cache;
+
+    if (cargos.has(CARGO_NAMORADO)) {
+        return 'Casado(a)';
+    }
+
+    if (cargos.has(CARGO_SOLTEIRO)) {
+        return 'Solteiro(a)';
+    }
+
+    return 'Estado civil';
+}
+
+// ==========================================
+// DESENHAR MODELO DIRETAMENTE NO CANVAS
+// ==========================================
+
+function desenharModelo(ctx, tema) {
+    // FUNDO PRINCIPAL
+
+    ctx.fillStyle = tema.fundo;
+
+    ctx.fillRect(
+        0,
+        0,
+        LARGURA,
+        ALTURA
     );
+
+    // PAINEL DE INFORMAÇÕES
+
+    ctx.fillStyle = tema.card;
+
+    arredondar(
+        ctx,
+        PAINEL.x,
+        PAINEL.y,
+        PAINEL.largura,
+        PAINEL.altura,
+        35
+    );
+
+    ctx.fill();
+
+    // DETALHE DE SEPARAÇÃO
+
+    ctx.strokeStyle = tema.borda;
+    ctx.lineWidth = 2;
+
+    ctx.beginPath();
+
+    ctx.moveTo(55, 625);
+    ctx.lineTo(830, 625);
+
+    ctx.stroke();
 }
 
 // ==========================================
@@ -413,7 +456,7 @@ async function carregarBanner(nomeArquivo) {
 }
 
 // ==========================================
-// DESENHAR BANNER SOBRE O MODELO
+// DESENHAR BANNER
 // ==========================================
 
 function desenharBanner(ctx, imagem, crop = {}) {
@@ -507,6 +550,23 @@ async function desenharAvatar(ctx, user) {
             size: 512
         })
     );
+
+    // BORDA BRANCA
+
+    ctx.beginPath();
+
+    ctx.arc(
+        AVATAR.x,
+        AVATAR.y,
+        AVATAR.raio + 13,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fill();
+
+    // IMAGEM DO AVATAR
 
     ctx.save();
 
@@ -616,11 +676,13 @@ function desenharDescricao(ctx, perfil, tema) {
     );
 
     ctx.beginPath();
+
     ctx.moveTo(55, 625);
     ctx.lineTo(830, 625);
 
     ctx.strokeStyle = tema.borda;
     ctx.lineWidth = 2;
+
     ctx.stroke();
 }
 
@@ -699,8 +761,9 @@ function desenharCartao(
     const largura = CARTOES.largura;
     const altura = CARTOES.altura;
 
-    // FUNDO BRANCO
-    ctx.fillStyle = '#FFFFFF';
+    // FUNDO DO CARTÃO
+
+    ctx.fillStyle = tema.fundo;
 
     arredondar(
         ctx,
@@ -714,6 +777,7 @@ function desenharCartao(
     ctx.fill();
 
     // ÍCONE ROXO
+
     desenharIcone(
         ctx,
         tipo,
@@ -722,6 +786,7 @@ function desenharCartao(
     );
 
     // TEXTO
+
     const textoX = x + 125;
 
     desenharTexto(
@@ -730,7 +795,7 @@ function desenharCartao(
         textoX,
         y + 52,
         31,
-        '#171717',
+        tema.texto,
         'bold'
     );
 
@@ -740,7 +805,7 @@ function desenharCartao(
         textoX,
         y + 86,
         25,
-        '#171717',
+        tema.texto,
         'bold'
     );
 }
@@ -750,9 +815,6 @@ function desenharCartao(
 // ==========================================
 
 function desenharPainel(ctx, perfil, member, tema) {
-    // O FUNDO CINZA VEM DA IMAGEM-BASE.
-    // NÃO DESENHAMOS OUTRO PAINEL POR CIMA.
-
     const nivel = Number(perfil.nivel) || 1;
     const money = Number(perfil.money) || 0;
     const xp = Number(perfil.xp) || 0;
@@ -768,6 +830,7 @@ function desenharPainel(ctx, perfil, member, tema) {
     const parceiro = perfil.parceiro || 'Não informado';
 
     // PRIMEIRA LINHA
+
     desenharCartao(
         ctx,
         CARTOES.x1,
@@ -789,6 +852,7 @@ function desenharPainel(ctx, perfil, member, tema) {
     );
 
     // SEGUNDA LINHA
+
     desenharCartao(
         ctx,
         CARTOES.x1,
@@ -810,13 +874,12 @@ function desenharPainel(ctx, perfil, member, tema) {
     );
 
     // TERCEIRA LINHA
+
     desenharCartao(
         ctx,
         CARTOES.x1,
         CARTOES.y3,
-        estadoCivil === 'Namorado'
-            ? 'Casado(a)'
-            : estadoCivil,
+        estadoCivil,
         parceiro,
         'casado',
         tema
@@ -837,19 +900,12 @@ async function gerarImagem(user, perfil, member = null) {
 
     const tema = TEMAS[perfil.tema] || TEMAS.branco;
 
-    // CARREGAR MODELO ORIGINAL
-    const modelo = await carregarModelo();
+    // DESENHAR FUNDO E PAINEL
 
-    // PRESERVAR TAMANHO DO MODELO
-    ctx.drawImage(
-        modelo,
-        0,
-        0,
-        LARGURA,
-        ALTURA
-    );
+    desenharModelo(ctx, tema);
 
-    // SUBSTITUIR BANNER
+    // BANNER
+
     if (perfil.banner) {
         try {
             const banner = await carregarBanner(
@@ -869,13 +925,15 @@ async function gerarImagem(user, perfil, member = null) {
         }
     }
 
-    // SUBSTITUIR FOTO DO CÍRCULO
+    // AVATAR
+
     await desenharAvatar(
         ctx,
         user
     );
 
     // DESCRIÇÃO
+
     desenharDescricao(
         ctx,
         perfil,
@@ -883,6 +941,7 @@ async function gerarImagem(user, perfil, member = null) {
     );
 
     // INFORMAÇÕES
+
     desenharPainel(
         ctx,
         perfil,
@@ -891,6 +950,7 @@ async function gerarImagem(user, perfil, member = null) {
     );
 
     // NOME
+
     desenharNome(
         ctx,
         user,
@@ -1231,6 +1291,7 @@ module.exports = {
     async handleInteraction(interaction) {
 
         // ABRIR EDIÇÃO
+
         if (
             interaction.isButton() &&
             interaction.customId === 'perfil_abrir_edicao'
@@ -1266,6 +1327,7 @@ module.exports = {
         }
 
         // ESCOLHER OPÇÃO
+
         if (
             interaction.isStringSelectMenu() &&
             interaction.customId === 'perfil_editar_opcao'
@@ -1273,6 +1335,7 @@ module.exports = {
             const tipo = interaction.values[0];
 
             // BANNER
+
             if (tipo === 'banner') {
                 if (!interaction.guild) {
                     return interaction.reply({
@@ -1300,6 +1363,7 @@ module.exports = {
             }
 
             // TEMA
+
             if (tipo === 'tema') {
                 return interaction.reply({
                     content: '**Escolha o tema do seu perfil:**',
@@ -1323,6 +1387,7 @@ module.exports = {
             }
 
             // DESCRIÇÃO
+
             const modal = new ModalBuilder()
                 .setCustomId('perfil_modal_descricao')
                 .setTitle('Editar descrição');
@@ -1343,6 +1408,7 @@ module.exports = {
         }
 
         // ESCOLHER TEMA
+
         if (
             interaction.isStringSelectMenu() &&
             interaction.customId === 'perfil_escolher_tema'
@@ -1375,6 +1441,7 @@ module.exports = {
         }
 
         // AJUSTAR BANNER
+
         if (
             interaction.isButton() &&
             interaction.customId.startsWith('perfil_crop_')
@@ -1420,6 +1487,7 @@ module.exports = {
             }
 
             // CANCELAR
+
             if (acao === 'cancelar') {
                 ajustesPendentes.delete(
                     interaction.user.id
@@ -1434,6 +1502,7 @@ module.exports = {
             }
 
             // CONFIRMAR
+
             if (acao === 'confirmar') {
                 const perfil = obterPerfil(
                     interaction.user.id
@@ -1460,6 +1529,7 @@ module.exports = {
             }
 
             // MOVIMENTAR
+
             const passo = 0.05;
 
             if (acao === 'cima') estado.crop.y -= passo;
@@ -1506,6 +1576,7 @@ module.exports = {
         }
 
         // SALVAR DESCRIÇÃO
+
         if (
             interaction.isModalSubmit() &&
             interaction.customId === 'perfil_modal_descricao'
