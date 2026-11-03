@@ -12,7 +12,11 @@ const {
     ActivityType,
     ChannelType,
     PermissionFlagsBits,
-    EmbedBuilder,
+    ContainerBuilder,
+    TextDisplayBuilder,
+    SeparatorBuilder,
+    MediaGalleryBuilder,
+    MediaGalleryItemBuilder,
     ActionRowBuilder,
     ButtonBuilder,
     ButtonStyle,
@@ -593,19 +597,24 @@ async function liberarCall(canal) {
 // ======================================================
 
 function criarPainelCall() {
-    const embed = new EmbedBuilder()
-        .setTitle('🎙️ Controle de call')
-        .setDescription(
-            'Use os botões abaixo para controlar sua chamada.\n\n' +
-            '🔢 **Limite:** alterar a quantidade de pessoas.\n' +
-            '➡️ **Mover:** mover alguém para sua call.\n' +
-            '🔇 **Mutar:** recurso exclusivo para Boosters.\n' +
-            '🔊 **Desmutar:** retirar seu mute de servidor.\n' +
-            '🔒 **Privar:** restringir o acesso à call.\n' +
-            '🔓 **Liberar:** permitir que todos entrem novamente.'
+    const painel = new ContainerBuilder()
+        .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+                '# 🎙️ Controle de call\n\n' +
+                'Use os botões abaixo para controlar sua chamada.\n\n' +
+                '🔢 **Limite:** alterar a quantidade de pessoas.\n' +
+                '➡️ **Mover:** mover alguém para sua call.\n' +
+                '🔇 **Mutar:** recurso exclusivo para Boosters.\n' +
+                '🔊 **Desmutar:** retirar seu mute de servidor.\n' +
+                '🔒 **Privar:** restringir o acesso à call.\n' +
+                '🔓 **Liberar:** permitir que todos entrem novamente.'
+            )
         )
-        .setColor(0x000000)
-        .setImage(BANNER_PAINEL_CALL);
+        .addMediaGalleryComponents(
+            new MediaGalleryBuilder().addItems(
+                new MediaGalleryItemBuilder().setURL(BANNER_PAINEL_CALL)
+            )
+        );
 
     const linha1 = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
@@ -648,8 +657,8 @@ function criarPainelCall() {
     );
 
     return {
-        embeds: [embed],
-        components: [linha1, linha2]
+        components: [painel, linha1, linha2],
+        flags: MessageFlags.IsComponentsV2
     };
 }
 
@@ -719,44 +728,23 @@ async function publicarMensagem(mensagem) {
             mensagem.author.globalName ||
             mensagem.author.username;
 
-        const embed = new EmbedBuilder()
-            .setColor(0x000000)
-            .setAuthor({
-                name: autor,
-                iconURL: mensagem.author.displayAvatarURL({
-                    extension: 'png',
-                    size: 256
-                })
-            })
-            .setDescription(texto.slice(0, 4096) || '\u200B')
-            .setFooter({ text: 'ZODÍACO • PUBLICAÇÃO' })
-            .setTimestamp(data);
+        const textoPainel =
+            `# ${autor}\n-# ZODÍACO • PUBLICAÇÃO • <t:${Math.floor(data.getTime() / 1000)}:F>\n\n` +
+            (texto.slice(0, 3500) || '\u200B');
+
+        const componentesPainel = [
+            new ContainerBuilder().addTextDisplayComponents(
+                new TextDisplayBuilder().setContent(textoPainel)
+            )
+        ];
 
         const arquivos = [];
-
         if (imagens.length > 0) {
-            const imagem = imagens[0];
-            const resposta = await fetch(imagem.url);
-
-            if (resposta.ok) {
-                const buffer = Buffer.from(
-                    await resposta.arrayBuffer()
-                );
-
-                const extensao = (imagem.name || '')
-                    .match(/\.(png|jpe?g|gif|webp)$/i);
-
-                const nomeArquivo =
-                    `publicacao-${mensagem.id}${extensao?.[0] || '.png'}`;
-
-                arquivos.push(
-                    new AttachmentBuilder(buffer, {
-                        name: nomeArquivo
-                    })
-                );
-
-                embed.setImage(`attachment://${nomeArquivo}`);
-            }
+            componentesPainel[0].addMediaGalleryComponents(
+                new MediaGalleryBuilder().addItems(
+                    new MediaGalleryItemBuilder().setURL(imagens[0].url)
+                )
+            );
         }
 
         const publicacoes = obterPublicacoes();
@@ -775,9 +763,8 @@ async function publicarMensagem(mensagem) {
         };
 
         const publicada = await canal.send({
-            embeds: [embed],
-            files: arquivos,
-            components: criarBotoesPublicacao(mensagem.id)
+            components: [...componentesPainel, ...criarBotoesPublicacao(mensagem.id)],
+            flags: MessageFlags.IsComponentsV2
         });
 
         publicacoes[mensagem.id].mensagemPublicadaId = publicada.id;
@@ -1464,34 +1451,20 @@ client.on('interactionCreate', async interaction => {
                     );
                 }
 
-                const embed = new EmbedBuilder()
-                    .setTitle('ℹ️ Detalhes da publicação')
-                    .setColor(0x000000)
-                    .addFields(
-                        {
-                            name: 'Autor',
-                            value: `<@${publicacao.autorId}>`,
-                            inline: true
-                        },
-                        {
-                            name: 'Curtidas',
-                            value: String(publicacao.curtidas?.length || 0),
-                            inline: true
-                        },
-                        {
-                            name: 'Comentários',
-                            value: String(publicacao.comentarios?.length || 0),
-                            inline: true
-                        },
-                        {
-                            name: 'Texto',
-                            value: publicacao.texto?.slice(0, 1024) || 'Sem texto.'
-                        }
+                const painelDetalhes = new ContainerBuilder()
+                    .addTextDisplayComponents(
+                        new TextDisplayBuilder().setContent(
+                            '# ℹ️ Detalhes da publicação\n\n' +
+                            `**Autor:** <@${publicacao.autorId}>\n` +
+                            `**Curtidas:** ${publicacao.curtidas?.length || 0}\n` +
+                            `**Comentários:** ${publicacao.comentarios?.length || 0}\n\n` +
+                            `**Texto:**\n${publicacao.texto?.slice(0, 1800) || 'Sem texto.'}`
+                        )
                     );
 
                 return interaction.reply({
-                    embeds: [embed],
-                    flags: MessageFlags.Ephemeral
+                    components: [painelDetalhes],
+                    flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2
                 });
             }
 
