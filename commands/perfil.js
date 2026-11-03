@@ -51,7 +51,7 @@ const BANNER = {
 const AVATAR = {
     x: 1235,
     y: 480,
-    raio: 185
+    raio: 210
 };
 
 const PAINEL = {
@@ -83,11 +83,21 @@ const CARTOES = {
 // ==========================================
 
 const TEMAS = {
+    branco: {
+        nome: 'Branco',
+        fundo: '#FFFFFF',
+        painel: '#F3F3F3',
+        card: '#FFFFFF',
+        texto: '#171717',
+        secundario: '#777777',
+        borda: '#DADADA'
+    },
+
     preto: {
         nome: 'Preto',
-        fundo: '#0D0D12',
-        painel: '#191820',
-        card: '#22212B',
+        fundo: '#111114',
+        painel: '#202026',
+        card: '#29292F',
         texto: '#FFFFFF',
         secundario: '#B8B8C2',
         borda: '#393941'
@@ -197,7 +207,7 @@ function obterPerfil(id) {
         parceiro: '',
         banner: '',
         descricao: '',
-        tema: 'preto',
+        tema: 'branco',
 
         crop: {
             x: 0,
@@ -207,11 +217,6 @@ function obterPerfil(id) {
 
         ...(perfis[id] || {})
     };
-
-    // Perfis antigos que usavam branco passam para o novo padrão escuro.
-    if (perfil.tema === 'branco' || !TEMAS[perfil.tema]) {
-        perfil.tema = 'preto';
-    }
 
     // Atualiza o limite antigo de XP.
     if (
@@ -360,32 +365,39 @@ function desenharModelo(ctx, tema) {
 
 function desenharIndicadorBanner(ctx) {
     ctx.save();
-
-    // Cartão discreto para indicar onde o banner será exibido.
-    ctx.fillStyle = 'rgba(15, 12, 22, 0.72)';
-    arredondar(ctx, 55, 55, 360, 125, 24);
-    ctx.fill();
+    // Ilustração discreta em roxo para indicar onde o banner será exibido.
+    const gradiente = ctx.createLinearGradient(0, 0, LARGURA, BANNER.altura);
+    gradiente.addColorStop(0, '#21152F');
+    gradiente.addColorStop(0.5, '#352044');
+    gradiente.addColorStop(1, '#17131F');
+    ctx.fillStyle = gradiente;
+    ctx.fillRect(0, 0, LARGURA, BANNER.altura);
 
     const estrelas = [
-        [105, 105, 24], [155, 88, 13], [205, 128, 17],
-        [265, 91, 12], [315, 130, 21], [365, 96, 13]
+        [150, 120, 5], [330, 245, 3], [520, 105, 4], [720, 330, 5],
+        [910, 155, 3], [1100, 300, 4], [1320, 115, 5], [1450, 390, 3],
+        [240, 420, 3], [600, 450, 2], [980, 420, 3], [1240, 220, 2]
     ];
-
-    for (const [x, y, tamanho] of estrelas) {
-        desenharEmoji(ctx, '✦', x, y, tamanho);
+    ctx.fillStyle = '#D9B7FF';
+    for (const [x, y, r] of estrelas) {
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
     }
 
-    desenharTexto(
-        ctx,
-        'SEU BANNER',
-        235,
-        157,
-        25,
-        '#D9C2FF',
-        'bold',
-        'center'
-    );
-
+    ctx.globalAlpha = 0.72;
+    ctx.fillStyle = '#B987E8';
+    for (const [x, y, r] of [[420,180,34],[1180,130,24],[820,250,18]]) {
+        ctx.beginPath();
+        ctx.moveTo(x, y-r); ctx.lineTo(x+5, y-5); ctx.lineTo(x+r, y);
+        ctx.lineTo(x+5, y+5); ctx.lineTo(x, y+r); ctx.lineTo(x-5, y+5);
+        ctx.lineTo(x-r, y); ctx.lineTo(x-5, y-5); ctx.closePath(); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = 'rgba(15, 10, 22, 0.42)';
+    arredondar(ctx, 55, 55, 290, 85, 22);
+    ctx.fill();
+    desenharTexto(ctx, 'SEU BANNER', 200, 108, 27, '#FFFFFF', 'bold', 'center');
     ctx.restore();
 }
 
@@ -626,7 +638,7 @@ function desenharNome(ctx, user, tema) {
 
     const nome = user.globalName || user.username;
 
-    let tamanho = 48;
+    let tamanho = 42;
 
     ctx.save();
 
@@ -892,7 +904,7 @@ async function gerarImagem(user, perfil, member = null) {
     const canvas = createCanvas(LARGURA, ALTURA);
     const ctx = canvas.getContext('2d');
 
-    const tema = TEMAS[perfil.tema] || TEMAS.preto;
+    const tema = TEMAS[perfil.tema] || TEMAS.branco;
 
     desenharModelo(ctx, tema);
 
@@ -1236,7 +1248,7 @@ module.exports = {
             ? [
                 new ActionRowBuilder().addComponents(
                     new ButtonBuilder()
-                        .setCustomId(`perfil_abrir_edicao_${user.id}`)
+                        .setCustomId('perfil_abrir_edicao')
                         .setLabel('Editar')
                         .setStyle(ButtonStyle.Secondary)
                 )
@@ -1267,22 +1279,14 @@ module.exports = {
 
         if (
             interaction.isButton() &&
-            interaction.customId.startsWith('perfil_abrir_edicao_')
+            interaction.customId === 'perfil_abrir_edicao'
         ) {
-            const donoId = interaction.customId.split('_')[3];
-            if (donoId !== interaction.user.id) {
-                return interaction.reply({
-                    content: 'Essa mensagem não é para você.',
-                    flags: MessageFlags.Ephemeral
-                });
-            }
-
             return interaction.reply({
                 content: 'O que você deseja fazer?',
                 components: [
                     new ActionRowBuilder().addComponents(
                         new StringSelectMenuBuilder()
-                            .setCustomId(`perfil_editar_opcao_${interaction.user.id}`)
+                            .setCustomId('perfil_editar_opcao')
                             .setPlaceholder('Escolha uma opção')
                             .addOptions(
                                 {
@@ -1311,16 +1315,8 @@ module.exports = {
 
         if (
             interaction.isStringSelectMenu() &&
-            interaction.customId.startsWith('perfil_editar_opcao_')
+            interaction.customId === 'perfil_editar_opcao'
         ) {
-            const donoId = interaction.customId.split('_')[3];
-            if (donoId !== interaction.user.id) {
-                return interaction.reply({
-                    content: 'Essa mensagem não é para você.',
-                    flags: MessageFlags.Ephemeral
-                });
-            }
-
             const tipo = interaction.values[0];
 
             // BANNER
@@ -1359,9 +1355,10 @@ module.exports = {
                     components: [
                         new ActionRowBuilder().addComponents(
                             new StringSelectMenuBuilder()
-                                .setCustomId(`perfil_escolher_tema_${interaction.user.id}`)
+                                .setCustomId('perfil_escolher_tema')
                                 .setPlaceholder('Selecione uma cor')
                                 .addOptions(
+                                    { label: 'Branco', value: 'branco' },
                                     { label: 'Preto', value: 'preto' },
                                     { label: 'Roxo', value: 'roxo' },
                                     { label: 'Azul', value: 'azul' },
@@ -1377,7 +1374,7 @@ module.exports = {
             // DESCRIÇÃO
 
             const modal = new ModalBuilder()
-                .setCustomId(`perfil_modal_descricao_${interaction.user.id}`)
+                .setCustomId('perfil_modal_descricao')
                 .setTitle('Editar descrição');
 
             const campo = new TextInputBuilder()
@@ -1399,16 +1396,8 @@ module.exports = {
 
         if (
             interaction.isStringSelectMenu() &&
-            interaction.customId.startsWith('perfil_escolher_tema_')
+            interaction.customId === 'perfil_escolher_tema'
         ) {
-            const donoId = interaction.customId.split('_')[3];
-            if (donoId !== interaction.user.id) {
-                return interaction.reply({
-                    content: 'Essa mensagem não é para você.',
-                    flags: MessageFlags.Ephemeral
-                });
-            }
-
             const tema = interaction.values[0];
 
             if (!TEMAS[tema]) {
@@ -1591,16 +1580,8 @@ module.exports = {
 
         if (
             interaction.isModalSubmit() &&
-            interaction.customId.startsWith('perfil_modal_descricao_')
+            interaction.customId === 'perfil_modal_descricao'
         ) {
-            const donoId = interaction.customId.split('_')[3];
-            if (donoId !== interaction.user.id) {
-                return interaction.reply({
-                    content: 'Essa mensagem não é para você.',
-                    flags: MessageFlags.Ephemeral
-                });
-            }
-
             const valor = interaction.fields
                 .getTextInputValue('valor')
                 .trim();
