@@ -1,7 +1,11 @@
 
 const {
     SlashCommandBuilder,
-    EmbedBuilder,
+    ContainerBuilder,
+    TextDisplayBuilder,
+    MediaGalleryBuilder,
+    MediaGalleryItemBuilder,
+    SeparatorBuilder,
     ActionRowBuilder,
     StringSelectMenuBuilder
 } = require('discord.js');
@@ -27,20 +31,24 @@ module.exports = {
         .setDescription('Mostra o painel de cargos'),
 
     async execute(interaction) {
-        const embed = new EmbedBuilder()
-            
-
-.setTitle('Cargos - Zod')
-.setDescription(
-  'Siga os passos abaixo para ter uma melhor experiência!\n\n' +
-  '<:zodiaco:1559627194903568464> Você só pode ter um cargo por vez.\n\n' +
-  '<:zodiaco:1559627194903568464> Deseja trocar de cargo? O cargo anterior será removido automaticamente.\n\n' +
-  '<:zodiaco:1559627194903568464> Para escolher um cargo, você deve estar com o link do servidor na bio.'
-)
-.setColor(0x2b2d31)
-            .setImage(BANNER_PAINEL_CARGOS);
-
-
+        const painel = new ContainerBuilder()
+            .addTextDisplayComponents(
+                new TextDisplayBuilder().setContent(
+                    '> # <:zodiaco:1559470748714799145>  𝐀ntes ძe escolher os seus cargos, 𝑙eia as orientações! ˚₊‧ :2_wiisp: \n\n' +
+                    'ㅤ\n' +
+                    '<:zodiaco:1565855587076677783> ・𝑼m cargo por vez: Você poძerá ოanter apenas **uო cargo por vez**. Escolha coო atenção aquele que ოais coოbina coო você!\n\n' +
+                    '<:zodiaco:1565855587076677783> ・𝑻roca ძe cargo: Caso queira escolher outro cargo, não se preocupe! O anterior será reოoviძo autoოaticaოente assiო que você selecionar o novo.\n\n' +
+                    '<:zodiaco:1565855587076677783> ・𝑳ink na bio: Para conseguir selecionar uო cargo, é necessário que o link ძe convite ძo servidor esteja adicionado à sua biografia ძo ძiscord.\n\n' +
+                    'ㅤ\n' +
+                    'ꠂ<:zodiaco:1566146728653103104>  ・𝐀pós conferir as orientações, boa escolha!'
+                )
+            )
+            .addSeparatorComponents(new SeparatorBuilder())
+            .addMediaGalleryComponents(
+                new MediaGalleryBuilder().addItems(
+                    new MediaGalleryItemBuilder().setURL(BANNER_PAINEL_CARGOS)
+                )
+            );
 
         const menu = new StringSelectMenuBuilder()
             .setCustomId('selecionar_cargo')
@@ -57,8 +65,8 @@ module.exports = {
         const row = new ActionRowBuilder().addComponents(menu);
 
         await interaction.reply({
-            embeds: [embed],
-            components: [row]
+            components: [painel, row],
+            flags: require('discord.js').MessageFlags.IsComponentsV2
         });
     },
 
