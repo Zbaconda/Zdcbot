@@ -11,7 +11,6 @@ const {
     ButtonBuilder,
     ButtonStyle,
     StringSelectMenuBuilder,
-    EmbedBuilder,
     AttachmentBuilder,
     MessageFlags
 } = require('discord.js');
@@ -214,7 +213,7 @@ async function atualizarTopic(canal, dados) {
     );
 }
 
-async function enviarLog(guild, embed, files = []) {
+async function enviarLog(guild, painel, files = []) {
     const logs = await guild.channels.fetch(CANAL_LOGS_TICKETS).catch(() => null);
 
     if (!logs?.isTextBased()) {
@@ -222,7 +221,8 @@ async function enviarLog(guild, embed, files = []) {
     }
 
     await logs.send({
-        embeds: [embed],
+        components: [painel],
+        flags: MessageFlags.IsComponentsV2,
         files
     });
 }
@@ -332,32 +332,15 @@ async function criarTicket(interaction, client) {
             flags: MessageFlags.IsComponentsV2
         });
 
-        const embed = new EmbedBuilder()
-            .setColor(0x7137B8)
-            .setTitle('🎫 Novo ticket aberto')
-            .addFields(
-                {
-                    name: 'Aberto por',
-                    value: `${interaction.user} (${interaction.user.id})`
-                },
-                {
-                    name: 'Canal',
-                    value: `${canal}`,
-                    inline: true
-                },
-                {
-                    name: 'Categoria',
-                    value: 'Aguardando seleção',
-                    inline: true
-                },
-                {
-                    name: 'Aberto em',
-                    value: `<t:${Math.floor(Date.now() / 1000)}:F>`
-                }
-            )
-            .setTimestamp();
+        const painelLog = new ContainerBuilder()
+            .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+                '# 🎫 Novo ticket aberto\n\n' +
+                `**Aberto por:** ${interaction.user} (${interaction.user.id})\n` +
+                `**Canal:** ${canal}\n**Categoria:** Aguardando seleção\n` +
+                `**Aberto em:** <t:${Math.floor(Date.now() / 1000)}:F>`
+            ));
 
-        await enviarLog(interaction.guild, embed);
+        await enviarLog(interaction.guild, painelLog);
 
         await interaction.editReply({
             content: `✅ Seu ticket foi criado: ${canal}\nEscolha uma categoria para liberar o atendimento.`
@@ -445,29 +428,16 @@ async function selecionarCategoria(interaction) {
             .catch(() => null);
 
         if (logs?.isTextBased()) {
+            const painelLog = new ContainerBuilder()
+                .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+                    '# 📂 Categoria definida\n\n' +
+                    `**Ticket:** ${canal}\n` +
+                    `**Categoria:** ${categoria.emoji} ${categoria.label}\n` +
+                    `**Aberto por:** <@${dados.owner}>`
+                ));
             await logs.send({
-                embeds: [
-                    new EmbedBuilder()
-                        .setColor(0x7137B8)
-                        .setTitle('📂 Categoria definida')
-                        .addFields(
-                            {
-                                name: 'Ticket',
-                                value: `${canal}`,
-                                inline: true
-                            },
-                            {
-                                name: 'Categoria',
-                                value: `${categoria.emoji} ${categoria.label}`,
-                                inline: true
-                            },
-                            {
-                                name: 'Aberto por',
-                                value: `<@${dados.owner}>`
-                            }
-                        )
-                        .setTimestamp()
-                ]
+                components: [painelLog],
+                flags: MessageFlags.IsComponentsV2
             });
         }
 
@@ -569,49 +539,22 @@ async function acaoAdmin(interaction) {
         const aberto = new Date(dados.criado);
         const fechado = new Date();
 
-        const embed = new EmbedBuilder()
-            .setColor(0x7137B8)
-            .setTitle('🔒 Ticket encerrado')
-            .setDescription('Atendimento encerrado pela equipe.')
-            .addFields(
-                {
-                    name: 'Ticket',
-                    value: `#${canal.name} (${canal.id})`
-                },
-                {
-                    name: 'Aberto por',
-                    value: `<@${dados.owner}>`,
-                    inline: true
-                },
-                {
-                    name: 'Categoria',
-                    value: CATEGORIAS[dados.categoria]?.label || dados.categoria,
-                    inline: true
-                },
-                {
-                    name: 'Encerrado por',
-                    value: `${interaction.user} (${interaction.user.id})`,
-                    inline: true
-                },
-                {
-                    name: 'Aberto em',
-                    value: `<t:${Math.floor(aberto.getTime() / 1000)}:F>`
-                },
-                {
-                    name: 'Encerrado em',
-                    value: `<t:${Math.floor(fechado.getTime() / 1000)}:F>`
-                },
-                {
-                    name: 'Mensagens na transcrição',
-                    value: String(mensagens.length),
-                    inline: true
-                }
-            )
-            .setTimestamp(fechado);
+        const painelLog = new ContainerBuilder()
+            .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+                '# 🔒 Ticket encerrado\n\n' +
+                '**Atendimento encerrado pela equipe.**\n\n' +
+                `**Ticket:** #${canal.name} (${canal.id})\n` +
+                `**Aberto por:** <@${dados.owner}>\n` +
+                `**Categoria:** ${CATEGORIAS[dados.categoria]?.label || dados.categoria}\n` +
+                `**Encerrado por:** ${interaction.user} (${interaction.user.id})\n` +
+                `**Aberto em:** <t:${Math.floor(aberto.getTime() / 1000)}:F>\n` +
+                `**Encerrado em:** <t:${Math.floor(fechado.getTime() / 1000)}:F>\n` +
+                `**Mensagens na transcrição:** ${mensagens.length}`
+            ));
 
         await enviarLog(
             interaction.guild,
-            embed,
+            painelLog,
             [arquivo]
         );
 
