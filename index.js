@@ -40,7 +40,7 @@ const CLIENT_ID = process.env.CLIENT_ID;
 
 const CATEGORIA_CALL = '1560763293994323999';
 const CARGO_BOOSTER = '1559367297053757551';
-const CANAL_PUBLICACOES_ID = '1567571023061057657';
+const CANAL_PUBLICACOES_ID = '1561569037694275584';
 const CANAL_LIMPEZA_ID = '1559375230202290256';
 
 const BANNER_PAINEL_CALL = 'https://media.discordapp.net/attachments/1559056011375943784/1563610071886331994/file_0000000060b8820e9ce7fd5014b9b33a.png?ex=6ae03b1b&is=6adee99b&hm=89cc9ed84a2ef5f71ddaccaa52f5c6caff67303cb83988cc308da4f0907a89d5&=&format=webp&quality=lossless';
@@ -56,17 +56,9 @@ const EMOJIS_PUBLICACAO = {
         id: '1567528948093554781',
         name: 'coracaovazio'
     },
-    curtidaCheia: {
-        id: '1567528975411060836',
-        name: 'coracaocheio'
-    },
     republicacaoVazia: {
         id: '1567528817667612725',
         name: 'naorepost'
-    },
-    republicacaoCheia: {
-        id: '1567528882712879175',
-        name: 'republicando'
     },
     comentario: {
         id: '1567528753415061594',
@@ -609,7 +601,7 @@ function criarPainelCall() {
 }
 
 // ======================================================
-// PUBLICAÇÕES - BOTÕES COM EMOJIS
+// PUBLICAÇÕES - BOTÕES COM EMOJIS FIXOS
 // ======================================================
 
 function emojiPersonalizado(emoji) {
@@ -620,24 +612,17 @@ function emojiPersonalizado(emoji) {
 }
 
 function criarBotoesPublicacao(id, publicacao) {
-    const curtidas = publicacao?.curtidas || [];
-    const republicacoes = publicacao?.republicacoes || [];
+    // Os emojis ficam sempre vazios para todos os usuários.
+    // As curtidas e republicações são registradas individualmente
+    // nos dados, mas nunca alteram os emojis dos botões.
 
     const linha = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
             .setCustomId(`pub_like_${id}`)
             .setEmoji(
-                emojiPersonalizado(
-                    curtidas.length
-                        ? EMOJIS_PUBLICACAO.curtidaCheia
-                        : EMOJIS_PUBLICACAO.curtidaVazia
-                )
+                emojiPersonalizado(EMOJIS_PUBLICACAO.curtidaVazia)
             )
-            .setStyle(
-                curtidas.length
-                    ? ButtonStyle.Danger
-                    : ButtonStyle.Secondary
-            ),
+            .setStyle(ButtonStyle.Secondary),
 
         new ButtonBuilder()
             .setCustomId(`pub_comentar_${id}`)
@@ -647,17 +632,9 @@ function criarBotoesPublicacao(id, publicacao) {
         new ButtonBuilder()
             .setCustomId(`pub_republicar_${id}`)
             .setEmoji(
-                emojiPersonalizado(
-                    republicacoes.length
-                        ? EMOJIS_PUBLICACAO.republicacaoCheia
-                        : EMOJIS_PUBLICACAO.republicacaoVazia
-                )
+                emojiPersonalizado(EMOJIS_PUBLICACAO.republicacaoVazia)
             )
-            .setStyle(
-                republicacoes.length
-                    ? ButtonStyle.Success
-                    : ButtonStyle.Secondary
-            ),
+            .setStyle(ButtonStyle.Secondary),
 
         new ButtonBuilder()
             .setCustomId(`pub_detalhes_${id}`)
@@ -886,7 +863,6 @@ async function gerarCardPublicacao(publicacao) {
         timeZone: FUSO_HORARIO
     }).format(data);
 
-    // Fonte leve e padronizada
     const fonteNome = '300 36px Arial';
     const fonteUsername = '300 22px Arial';
     const fonteTexto = '300 32px Arial';
@@ -941,7 +917,7 @@ async function gerarCardPublicacao(publicacao) {
         ctx.fill();
     }
 
-    // Nome do autor: fonte leve
+    // Nome do autor
     ctx.fillStyle = '#ffffff';
     ctx.font = fonteNome;
     ctx.fillText(autorNome.slice(0, 35), 190, 100);
@@ -964,13 +940,12 @@ async function gerarCardPublicacao(publicacao) {
         ctx.fillText('✓', seloX - 7, 95);
     }
 
-    // Username menor
+    // Username
     ctx.fillStyle = '#9b9da7';
     ctx.font = fonteUsername;
     ctx.fillText(`@${username}`.slice(0, 45), 190, 140);
 
     // Texto da publicação
-    // A identificação ZODÍACO foi removida.
     let y = 205;
 
     ctx.fillStyle = '#f5f5f7';
@@ -1018,14 +993,12 @@ async function gerarCardPublicacao(publicacao) {
     const desenharContador = (numero, descricao, x, y) => {
         const textoNumero = String(numero);
 
-        // Número branco
         ctx.fillStyle = '#ffffff';
         ctx.font = fonteContador;
         ctx.fillText(textoNumero, x, y);
 
         const larguraNumero = ctx.measureText(textoNumero).width;
 
-        // Descrição cinza
         ctx.fillStyle = '#8d909a';
         ctx.font = fonteContador;
         ctx.fillText(
@@ -1849,7 +1822,6 @@ client.on('interactionCreate', async interaction => {
                     flags: MessageFlags.Ephemeral
                 });
 
-                // DESFAZER REPUBLICAÇÃO
                 if (indice !== -1) {
                     publicacao.republicacoes.splice(indice, 1);
 
@@ -1862,7 +1834,6 @@ client.on('interactionCreate', async interaction => {
                     });
                 }
 
-                // REGISTRAR REPUBLICAÇÃO
                 publicacao.republicacoes.push(usuarioId);
 
                 salvarPublicacoes(publicacoes);
