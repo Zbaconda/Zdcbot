@@ -886,10 +886,17 @@ async function gerarCardPublicacao(publicacao) {
         timeZone: FUSO_HORARIO
     }).format(data);
 
+    // Fonte leve e padronizada
+    const fonteNome = '300 36px Arial';
+    const fonteUsername = '300 22px Arial';
+    const fonteTexto = '300 32px Arial';
+    const fonteData = '300 22px Arial';
+    const fonteContador = '300 22px Arial';
+
     const canvasMedida = createCanvas(largura, 100);
     const ctxMedida = canvasMedida.getContext('2d');
 
-    ctxMedida.font = '32px Arial';
+    ctxMedida.font = fonteTexto;
 
     const linhas = quebrarTexto(
         ctxMedida,
@@ -901,7 +908,7 @@ async function gerarCardPublicacao(publicacao) {
     const alturaImagem = imagemMidia ? 480 : 0;
 
     const altura =
-        270 +
+        220 +
         alturaTexto +
         (imagemMidia ? alturaImagem + 35 : 0) +
         160;
@@ -934,9 +941,9 @@ async function gerarCardPublicacao(publicacao) {
         ctx.fill();
     }
 
-    // Nome
+    // Nome do autor: fonte leve
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 36px Arial';
+    ctx.font = fonteNome;
     ctx.fillText(autorNome.slice(0, 35), 190, 100);
 
     // Selo de verificação
@@ -953,25 +960,21 @@ async function gerarCardPublicacao(publicacao) {
         ctx.fill();
 
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 20px Arial';
+        ctx.font = '300 20px Arial';
         ctx.fillText('✓', seloX - 7, 95);
     }
 
     // Username menor
     ctx.fillStyle = '#9b9da7';
-    ctx.font = '21px Arial';
+    ctx.font = fonteUsername;
     ctx.fillText(`@${username}`.slice(0, 45), 190, 140);
 
-    // Identificação
-    ctx.fillStyle = '#ed4245';
-    ctx.font = 'bold 19px Arial';
-    ctx.fillText('ZODÍACO', 190, 178);
-
-    // Texto
-    let y = 235;
+    // Texto da publicação
+    // A identificação ZODÍACO foi removida.
+    let y = 205;
 
     ctx.fillStyle = '#f5f5f7';
-    ctx.font = '32px Arial';
+    ctx.font = fonteTexto;
 
     for (const linha of linhas) {
         ctx.fillText(linha, margem, y);
@@ -1004,28 +1007,37 @@ async function gerarCardPublicacao(publicacao) {
 
     // Data
     ctx.fillStyle = '#8d909a';
-    ctx.font = '22px Arial';
+    ctx.font = fonteData;
     ctx.fillText(dataFormatada, margem, altura - 95);
 
-    // Contadores em fonte normal
+    // Contadores
     const curtidas = publicacao.curtidas?.length || 0;
     const comentarios = publicacao.comentarios?.length || 0;
     const republicacoes = publicacao.republicacoes?.length || 0;
 
-    ctx.fillStyle = '#b5b5b5';
-    ctx.font = '22px Arial';
+    const desenharContador = (numero, descricao, x, y) => {
+        const textoNumero = String(numero);
 
-    ctx.fillText(`${curtidas} curtidas`, margem, altura - 42);
-    ctx.fillText(
-        `${comentarios} comentários`,
-        margem + 280,
-        altura - 42
-    );
-    ctx.fillText(
-        `${republicacoes} republicações`,
-        margem + 650,
-        altura - 42
-    );
+        // Número branco
+        ctx.fillStyle = '#ffffff';
+        ctx.font = fonteContador;
+        ctx.fillText(textoNumero, x, y);
+
+        const larguraNumero = ctx.measureText(textoNumero).width;
+
+        // Descrição cinza
+        ctx.fillStyle = '#8d909a';
+        ctx.font = fonteContador;
+        ctx.fillText(
+            descricao,
+            x + larguraNumero + 8,
+            y
+        );
+    };
+
+    desenharContador(curtidas, 'curtidas', margem, altura - 42);
+    desenharContador(comentarios, 'comentários', margem + 280, altura - 42);
+    desenharContador(republicacoes, 'republicações', margem + 650, altura - 42);
 
     return canvas.toBuffer('image/png');
 }
@@ -1813,6 +1825,7 @@ client.on('interactionCreate', async interaction => {
             }
 
             // REPUBLICAR / DESFAZER REPUBLICAÇÃO
+            // A ação é privada e não cria mensagens no canal.
             if (id.startsWith('pub_republicar_')) {
                 const publicacaoId = id.slice('pub_republicar_'.length);
                 const publicacoes = obterPublicacoes();
@@ -1829,10 +1842,6 @@ client.on('interactionCreate', async interaction => {
                     publicacao.republicacoes = [];
                 }
 
-                if (!publicacao.mensagensRepostadas) {
-                    publicacao.mensagensRepostadas = {};
-                }
-
                 const usuarioId = interaction.user.id;
                 const indice = publicacao.republicacoes.indexOf(usuarioId);
 
@@ -1840,31 +1849,11 @@ client.on('interactionCreate', async interaction => {
                     flags: MessageFlags.Ephemeral
                 });
 
+                // DESFAZER REPUBLICAÇÃO
                 if (indice !== -1) {
                     publicacao.republicacoes.splice(indice, 1);
 
-                    const mensagemRepostadaId =
-                        publicacao.mensagensRepostadas[usuarioId];
-
-                    delete publicacao.mensagensRepostadas[usuarioId];
-
                     salvarPublicacoes(publicacoes);
-
-                    if (mensagemRepostadaId) {
-                        const canal = await client.channels
-                            .fetch(publicacao.canalId)
-                            .catch(() => null);
-
-                        if (canal?.isTextBased()) {
-                            const mensagemRepostada = await canal.messages
-                                .fetch(mensagemRepostadaId)
-                                .catch(() => null);
-
-                            if (mensagemRepostada) {
-                                await mensagemRepostada.delete().catch(() => null);
-                            }
-                        }
-                    }
 
                     await atualizarCardPublicacao(publicacaoId);
 
@@ -1873,36 +1862,21 @@ client.on('interactionCreate', async interaction => {
                     });
                 }
 
+                // REGISTRAR REPUBLICAÇÃO
                 publicacao.republicacoes.push(usuarioId);
+
+                salvarPublicacoes(publicacoes);
+
+                await atualizarCardPublicacao(publicacaoId);
 
                 const link = publicacao.mensagemPublicadaId
                     ? `https://discord.com/channels/${publicacao.guildId}/${publicacao.canalId}/${publicacao.mensagemPublicadaId}`
-                    : null;
-
-                const canal = await client.channels
-                    .fetch(publicacao.canalId)
-                    .catch(() => null);
-
-                if (canal?.isTextBased()) {
-                    const repost = await canal.send({
-                        content:
-                            `**${interaction.user.username} republicou uma publicação.**\n` +
-                            (link ? `Publicação original: ${link}` : '')
-                    }).catch(erro => {
-                        console.error('Erro ao enviar republicação:', erro);
-                        return null;
-                    });
-
-                    if (repost) {
-                        publicacao.mensagensRepostadas[usuarioId] = repost.id;
-                    }
-                }
-
-                salvarPublicacoes(publicacoes);
-                await atualizarCardPublicacao(publicacaoId);
+                    : 'Link indisponível.';
 
                 return interaction.editReply({
-                    content: 'Você republicou esta publicação!'
+                    content:
+                        `**${interaction.user.username} republicou uma publicação.**\n` +
+                        `Publicação original: ${link}`
                 });
             }
 
@@ -2354,4 +2328,4 @@ if (!TOKEN) {
     client.login(TOKEN).catch(erro => {
         console.error('Não foi possível conectar o bot:', erro);
     });
-        }
+    }
