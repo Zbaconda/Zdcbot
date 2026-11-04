@@ -2299,4 +2299,4 @@ if (!TOKEN) {
     client.login(TOKEN).catch(erro => {
         console.error('Não foi possível conectar o bot:', erro);
     });
-    }
+               }
