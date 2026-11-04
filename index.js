@@ -3,6 +3,7 @@ require('dotenv').config();
 const fs = require('node:fs');
 const path = require('node:path');
 const cron = require('node-cron');
+const { createCanvas, loadImage } = require('@napi-rs/canvas');
 
 const {
     Client,
@@ -14,7 +15,6 @@ const {
     PermissionFlagsBits,
     ContainerBuilder,
     TextDisplayBuilder,
-    SeparatorBuilder,
     MediaGalleryBuilder,
     MediaGalleryItemBuilder,
     ActionRowBuilder,
@@ -32,7 +32,7 @@ const {
 } = require('discord.js');
 
 // ======================================================
-// CONFIGURAÇÕES DO ZODÍACO
+// CONFIGURAÇÕES
 // ======================================================
 
 const TOKEN = process.env.DISCORD_TOKEN;
@@ -48,14 +48,13 @@ const BANNER_PAINEL_CALL = 'https://media.discordapp.net/attachments/15590560113
 const FUSO_HORARIO = 'America/Sao_Paulo';
 const TEMPO_EXCLUSAO_CALL_VAZIA = 10000;
 const INTERVALO_ATIVIDADE = 10 * 60 * 60 * 1000;
+const LIMITE_VERIFICACAO = 40;
 
 const DATA_DIR = path.join(__dirname, 'data');
 const ARQUIVO_PUBLICACOES = path.join(DATA_DIR, 'publicacoes.json');
 const ARQUIVO_LIMPEZA = path.join(DATA_DIR, 'limpeza.json');
-const ARQUIVO_CALLS_TEMPORARIAS = path.join(
-    DATA_DIR,
-    'calls_temporarias.json'
-);
+const ARQUIVO_CALLS_TEMPORARIAS = path.join(DATA_DIR, 'calls_temporarias.json');
+const ARQUIVO_VERIFICADOS = path.join(DATA_DIR, 'verificados.json');
 
 if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -67,12 +66,15 @@ function garantirArquivo(arquivo) {
     }
 }
 
-garantirArquivo(ARQUIVO_PUBLICACOES);
-garantirArquivo(ARQUIVO_LIMPEZA);
-garantirArquivo(ARQUIVO_CALLS_TEMPORARIAS);
+[
+    ARQUIVO_PUBLICACOES,
+    ARQUIVO_LIMPEZA,
+    ARQUIVO_CALLS_TEMPORARIAS,
+    ARQUIVO_VERIFICADOS
+].forEach(garantirArquivo);
 
 // ======================================================
-// CLIENTE DISCORD
+// CLIENTE
 // ======================================================
 
 const client = new Client({
@@ -99,7 +101,7 @@ client.commands = new Collection();
 const temporizadoresCall = new Map();
 
 // ======================================================
-// ARQUIVOS JSON
+// JSON
 // ======================================================
 
 function lerJSON(arquivo) {
@@ -113,11 +115,7 @@ function lerJSON(arquivo) {
 
 function salvarJSON(arquivo, dados) {
     try {
-        fs.writeFileSync(
-            arquivo,
-            JSON.stringify(dados, null, 2),
-            'utf8'
-        );
+        fs.writeFileSync(arquivo, JSON.stringify(dados, null, 2), 'utf8');
     } catch (erro) {
         console.error(`Erro ao salvar ${arquivo}:`, erro);
     }
@@ -131,36 +129,25 @@ function salvarPublicacoes(dados) {
     salvarJSON(ARQUIVO_PUBLICACOES, dados);
 }
 
-// ======================================================
-// REGISTRO DE CALLS TEMPORÁRIAS
-// ======================================================
-
 function obterCallsTemporarias() {
     return lerJSON(ARQUIVO_CALLS_TEMPORARIAS);
 }
 
 function registrarCallTemporaria(canalId) {
     const calls = obterCallsTemporarias();
-
     calls[canalId] = true;
-
     salvarJSON(ARQUIVO_CALLS_TEMPORARIAS, calls);
-
-    const verificacao = obterCallsTemporarias();
-
-    return verificacao[canalId] === true;
+    return obterCallsTemporarias()[canalId] === true;
 }
 
 function removerRegistroCall(canalId) {
     const calls = obterCallsTemporarias();
-
     delete calls[canalId];
-
     salvarJSON(ARQUIVO_CALLS_TEMPORARIAS, calls);
 }
 
 // ======================================================
-// RESPOSTAS DE INTERAÇÃO
+// RESPOSTAS
 // ======================================================
 
 async function responderErro(interaction, mensagem) {
@@ -173,7 +160,6 @@ async function responderErro(interaction, mensagem) {
         if (interaction.replied || interaction.deferred) {
             return await interaction.followUp(resposta);
         }
-
         return await interaction.reply(resposta);
     } catch (erro) {
         console.error('Erro ao responder interação:', erro);
@@ -190,7 +176,6 @@ async function responderSucesso(interaction, mensagem) {
         if (interaction.replied || interaction.deferred) {
             return await interaction.followUp(resposta);
         }
-
         return await interaction.reply(resposta);
     } catch (erro) {
         console.error('Erro ao responder interação:', erro);
@@ -198,7 +183,7 @@ async function responderSucesso(interaction, mensagem) {
 }
 
 // ======================================================
-// CARREGAR COMANDOS SLASH
+// COMANDOS SLASH
 // ======================================================
 
 const pastaComandos = path.join(__dirname, 'commands');
@@ -209,35 +194,30 @@ if (fs.existsSync(pastaComandos)) {
 
     for (const arquivo of arquivos) {
         try {
-            const caminho = path.join(pastaComandos, arquivo);
-            const comando = require(caminho);
+            const comando = require(path.join(pastaComandos, arquivo));
 
             if (comando.data && comando.execute) {
                 client.commands.set(comando.data.name, comando);
-                console.log(`✅ Comando carregado: ${comando.data.name}`);
+                console.log(`Comando carregado: ${comando.data.name}`);
             } else {
-                console.warn(
-                    `⚠️ ${arquivo} não contém data e execute.`
-                );
+                console.warn(`${arquivo} não contém data e execute.`);
             }
         } catch (erro) {
-            console.error(`❌ Erro ao carregar ${arquivo}:`, erro);
+            console.error(`Erro ao carregar ${arquivo}:`, erro);
         }
     }
 }
 
 async function registrarComandos() {
     if (!TOKEN || !CLIENT_ID) {
-        console.warn(
-            '⚠️ Configure DISCORD_TOKEN e CLIENT_ID nas variáveis de ambiente.'
-        );
+        console.warn('Configure DISCORD_TOKEN e CLIENT_ID.');
         return;
     }
 
     const comandos = [...client.commands.values()]
         .map(comando => comando.data.toJSON());
 
-    if (comandos.length === 0) {
+    if (!comandos.length) {
         console.log('Nenhum comando slash encontrado.');
         return;
     }
@@ -250,16 +230,14 @@ async function registrarComandos() {
             { body: comandos }
         );
 
-        console.log(
-            `✅ ${comandos.length} comandos slash registrados.`
-        );
+        console.log(`${comandos.length} comandos slash registrados.`);
     } catch (erro) {
-        console.error('❌ Erro ao registrar comandos:', erro);
+        console.error('Erro ao registrar comandos:', erro);
     }
 }
 
 // ======================================================
-// ATIVIDADE DO BOT
+// ATIVIDADE
 // ======================================================
 
 const series = [
@@ -275,7 +253,7 @@ let indiceSerie = 0;
 let intervaloAtividade = null;
 
 function atualizarAtividade() {
-    if (!client.user || series.length === 0) return;
+    if (!client.user || !series.length) return;
 
     client.user.setActivity(series[indiceSerie], {
         type: ActivityType.Watching
@@ -285,7 +263,7 @@ function atualizarAtividade() {
 }
 
 // ======================================================
-// FUNÇÕES AUXILIARES DE CALL
+// CALLS TEMPORÁRIAS
 // ======================================================
 
 function obterCall(interaction) {
@@ -293,16 +271,11 @@ function obterCall(interaction) {
 }
 
 function ehBooster(membro) {
-    return Boolean(
-        membro?.roles?.cache?.has(CARGO_BOOSTER)
-    );
+    return Boolean(membro?.roles?.cache?.has(CARGO_BOOSTER));
 }
 
 function estaNaCategoriaCall(canal) {
-    return Boolean(
-        canal &&
-        canal.parentId === CATEGORIA_CALL
-    );
+    return Boolean(canal && canal.parentId === CATEGORIA_CALL);
 }
 
 function ehCallTemporaria(canal) {
@@ -314,15 +287,11 @@ function ehCallTemporaria(canal) {
         return false;
     }
 
-    const calls = obterCallsTemporarias();
-
-    return calls[canal.id] === true;
+    return obterCallsTemporarias()[canal.id] === true;
 }
 
 function podeControlarCall(interaction, canal) {
-    if (!canal || !interaction.member) {
-        return false;
-    }
+    if (!canal || !interaction.member) return false;
 
     if (
         ehCallTemporaria(canal) &&
@@ -332,9 +301,7 @@ function podeControlarCall(interaction, canal) {
     }
 
     return Boolean(
-        interaction.memberPermissions?.has(
-            PermissionFlagsBits.ManageChannels
-        )
+        interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)
     );
 }
 
@@ -350,16 +317,12 @@ function podeAlterarPrivacidade(interaction, canal) {
     }
 
     if (
-        interaction.memberPermissions?.has(
-            PermissionFlagsBits.ManageChannels
-        )
+        interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)
     ) {
         return true;
     }
 
-    return (
-        interaction.member?.voice?.channelId === canal.id
-    );
+    return interaction.member?.voice?.channelId === canal.id;
 }
 
 function cancelarTemporizadorCall(canalId) {
@@ -370,10 +333,6 @@ function cancelarTemporizadorCall(canalId) {
         temporizadoresCall.delete(canalId);
     }
 }
-
-// ======================================================
-// EXCLUSÃO DE CALLS TEMPORÁRIAS VAZIAS
-// ======================================================
 
 function programarExclusaoCall(canal) {
     if (!ehCallTemporaria(canal)) return;
@@ -386,25 +345,16 @@ function programarExclusaoCall(canal) {
                 .fetch(canal.id)
                 .catch(() => null);
 
-            if (
-                ehCallTemporaria(atual) &&
-                atual.members.size === 0
-            ) {
+            if (ehCallTemporaria(atual) && atual.members.size === 0) {
                 await atual.delete(
                     'Call temporária criada pelo bot e vazia há 10 segundos.'
                 );
 
                 removerRegistroCall(atual.id);
-
-                console.log(
-                    `🗑️ Call temporária criada pelo bot e excluída: ${atual.name}`
-                );
+                console.log(`Call temporária excluída: ${atual.name}`);
             }
         } catch (erro) {
-            console.error(
-                'Erro ao excluir call temporária:',
-                erro
-            );
+            console.error('Erro ao excluir call temporária:', erro);
         } finally {
             temporizadoresCall.delete(canal.id);
         }
@@ -413,19 +363,12 @@ function programarExclusaoCall(canal) {
     temporizadoresCall.set(canal.id, temporizador);
 }
 
-// ======================================================
-// CRIAR CALL TEMPORÁRIA
-// ======================================================
-
 async function criarCallTemporaria(interaction) {
     const guild = interaction.guild;
     const membro = interaction.member;
 
     if (!guild || !membro || !membro.user) {
-        return responderErro(
-            interaction,
-            '❌ Use esta opção dentro do servidor.'
-        );
+        return responderErro(interaction, 'Use esta opção dentro do servidor.');
     }
 
     try {
@@ -433,21 +376,16 @@ async function criarCallTemporaria(interaction) {
             .fetch(CATEGORIA_CALL)
             .catch(() => null);
 
-        if (
-            !categoria ||
-            categoria.type !== ChannelType.GuildCategory
-        ) {
+        if (!categoria || categoria.type !== ChannelType.GuildCategory) {
             return responderErro(
                 interaction,
-                '❌ A categoria das calls não foi encontrada. Confira o ID configurado.'
+                'A categoria das calls não foi encontrada. Confira o ID.'
             );
         }
 
         const canais = await guild.channels.fetch();
 
-        const nomeSeguro = (
-            membro.user.username || 'membro'
-        )
+        const nomeSeguro = (membro.user.username || 'membro')
             .normalize('NFD')
             .replace(/[\u0300-\u036f]/g, '')
             .toLowerCase()
@@ -488,23 +426,16 @@ async function criarCallTemporaria(interaction) {
             ]
         });
 
-        const registrado = registrarCallTemporaria(canal.id);
-
-        if (!registrado) {
-            await canal.delete(
-                'Não foi possível registrar a call temporária.'
-            ).catch(() => null);
-
+        if (!registrarCallTemporaria(canal.id)) {
+            await canal.delete().catch(() => null);
             return responderErro(
                 interaction,
-                '❌ Não consegui registrar a call com segurança. Tente novamente.'
+                'Não consegui registrar a call com segurança.'
             );
         }
 
         await interaction.reply({
-            content:
-                `✅ **Call criada com sucesso!**\n` +
-                `🎙️ **Vá para a call:** ${canal}`,
+            content: `Call criada com sucesso!\nVá para a call: ${canal}`,
             flags: MessageFlags.Ephemeral
         });
 
@@ -512,37 +443,25 @@ async function criarCallTemporaria(interaction) {
             try {
                 await membro.voice.setChannel(canal);
             } catch (erro) {
-                console.error(
-                    'Não consegui mover o criador para a call:',
-                    erro
-                );
+                console.error('Não consegui mover o criador:', erro);
 
                 await interaction.followUp({
-                    content:
-                        '⚠️ A call foi criada, mas não consegui mover você. Entre pelo canal criado.',
+                    content: 'A call foi criada, mas não consegui mover você.',
                     flags: MessageFlags.Ephemeral
                 }).catch(() => null);
             }
         }
 
-        console.log(
-            `🎙️ Call temporária registrada: ${canal.name} (${canal.id})`
-        );
-
+        console.log(`Call temporária registrada: ${canal.name}`);
         return canal;
     } catch (erro) {
         console.error('Erro ao criar call:', erro);
-
         return responderErro(
             interaction,
-            '❌ Não consegui criar a call. Confira as permissões do bot e a categoria.'
+            'Não consegui criar a call. Confira as permissões do bot.'
         );
     }
 }
-
-// ======================================================
-// PRIVACIDADE DE QUALQUER CALL DE VOZ
-// ======================================================
 
 async function privarCall(canal) {
     if (
@@ -557,10 +476,7 @@ async function privarCall(canal) {
 
     await canal.permissionOverwrites.edit(
         canal.guild.roles.everyone.id,
-        {
-            ViewChannel: false,
-            Connect: false
-        }
+        { ViewChannel: false, Connect: false }
     );
 
     for (const membro of canal.members.values()) {
@@ -585,29 +501,22 @@ async function liberarCall(canal) {
 
     await canal.permissionOverwrites.edit(
         canal.guild.roles.everyone.id,
-        {
-            ViewChannel: true,
-            Connect: true
-        }
+        { ViewChannel: true, Connect: true }
     );
 }
-
-// ======================================================
-// PAINEL DE CONTROLE DE CALL
-// ======================================================
 
 function criarPainelCall() {
     const painel = new ContainerBuilder()
         .addTextDisplayComponents(
             new TextDisplayBuilder().setContent(
-                '# 🎙️ Controle de call\n\n' +
+                '# Controle de call\n\n' +
                 'Use os botões abaixo para controlar sua chamada.\n\n' +
-                '🔢 **Limite:** alterar a quantidade de pessoas.\n' +
-                '➡️ **Mover:** mover alguém para sua call.\n' +
-                '🔇 **Mutar:** recurso exclusivo para Boosters.\n' +
-                '🔊 **Desmutar:** retirar seu mute de servidor.\n' +
-                '🔒 **Privar:** restringir o acesso à call.\n' +
-                '🔓 **Liberar:** permitir que todos entrem novamente.'
+                '**Limite:** alterar a quantidade de pessoas.\n' +
+                '**Mover:** mover alguém para sua call.\n' +
+                '**Mutar:** recurso exclusivo para Boosters.\n' +
+                '**Desmutar:** retirar seu mute de servidor.\n' +
+                '**Privar:** restringir o acesso à call.\n' +
+                '**Liberar:** permitir que todos entrem novamente.'
             )
         )
         .addMediaGalleryComponents(
@@ -663,7 +572,7 @@ function criarPainelCall() {
 }
 
 // ======================================================
-// BOTÕES DAS PUBLICAÇÕES
+// SISTEMA DE PUBLICAÇÕES - BOTÕES
 // ======================================================
 
 function criarBotoesPublicacao(id) {
@@ -671,35 +580,360 @@ function criarBotoesPublicacao(id) {
         new ButtonBuilder()
             .setCustomId(`pub_like_${id}`)
             .setLabel('Curtir')
-            .setEmoji('<a:pureza_h:1562608729336320093>')
             .setStyle(ButtonStyle.Secondary),
 
         new ButtonBuilder()
             .setCustomId(`pub_comentar_${id}`)
             .setLabel('Comentar')
-            .setEmoji('<:kxv:1561583471841906791>')
             .setStyle(ButtonStyle.Secondary),
 
         new ButtonBuilder()
-            .setCustomId(`pub_compartilhar_${id}`)
-            .setLabel('Compartilhar')
-            .setEmoji('<a:pureza_h:1562608731521286205>')
-            .setStyle(ButtonStyle.Secondary)
-    );
+            .setCustomId(`pub_republicar_${id}`)
+            .setLabel('Republicar')
+            .setStyle(ButtonStyle.Secondary),
 
-    const linha2 = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
             .setCustomId(`pub_detalhes_${id}`)
-            .setLabel('Detalhes')
-            .setEmoji('<:zodiaco:1562608727700545546>')
+            .setLabel('Informações')
             .setStyle(ButtonStyle.Secondary)
     );
 
-    return [linha1, linha2];
+    return [linha1];
 }
 
 // ======================================================
-// PUBLICAÇÕES
+// SISTEMA DE VERIFICAÇÃO
+// ======================================================
+
+function obterVerificados() {
+    return lerJSON(ARQUIVO_VERIFICADOS);
+}
+
+function usuarioVerificado(usuarioId) {
+    return Boolean(obterVerificados()[usuarioId]);
+}
+
+function atualizarVerificacoes(publicacoes) {
+    const verificados = obterVerificados();
+
+    const curtidasPorUsuario = {};
+
+    for (const publicacao of Object.values(publicacoes)) {
+        if (!publicacao || !publicacao.autorId) continue;
+
+        if (!Array.isArray(publicacao.curtidas)) {
+            publicacao.curtidas = [];
+        }
+
+        curtidasPorUsuario[publicacao.autorId] =
+            (curtidasPorUsuario[publicacao.autorId] || 0) +
+            publicacao.curtidas.length;
+    }
+
+    for (const [usuarioId, total] of Object.entries(curtidasPorUsuario)) {
+        if (total >= LIMITE_VERIFICACAO && !verificados[usuarioId]) {
+            verificados[usuarioId] = {
+                verificadoDesde: new Date().toISOString()
+            };
+
+            console.log(`Usuário ${usuarioId} recebeu verificação.`);
+        }
+    }
+
+    salvarJSON(ARQUIVO_VERIFICADOS, verificados);
+}
+
+// ======================================================
+// FUNÇÕES DO CARD DE PUBLICAÇÃO
+// ======================================================
+
+function arredondarRetangulo(ctx, x, y, largura, altura, raio) {
+    ctx.beginPath();
+    ctx.moveTo(x + raio, y);
+    ctx.lineTo(x + largura - raio, y);
+    ctx.quadraticCurveTo(x + largura, y, x + largura, y + raio);
+    ctx.lineTo(x + largura, y + altura - raio);
+    ctx.quadraticCurveTo(
+        x + largura,
+        y + altura,
+        x + largura - raio,
+        y + altura
+    );
+    ctx.lineTo(x + raio, y + altura);
+    ctx.quadraticCurveTo(x, y + altura, x, y + altura - raio);
+    ctx.lineTo(x, y + raio);
+    ctx.quadraticCurveTo(x, y, x + raio, y);
+    ctx.closePath();
+}
+
+function quebrarTexto(ctx, texto, largura) {
+    const palavras = String(texto || '').split(/\s+/);
+    const linhas = [];
+    let linha = '';
+
+    for (const palavra of palavras) {
+        const teste = linha ? `${linha} ${palavra}` : palavra;
+
+        if (ctx.measureText(teste).width > largura && linha) {
+            linhas.push(linha);
+            linha = palavra;
+        } else {
+            linha = teste;
+        }
+    }
+
+    if (linha) linhas.push(linha);
+    return linhas;
+}
+
+async function carregarImagem(url) {
+    if (!url) return null;
+
+    try {
+        return await loadImage(url);
+    } catch (erro) {
+        console.warn('Não consegui carregar imagem:', erro.message);
+        return null;
+    }
+}
+
+function desenharImagemCortada(ctx, imagem, x, y, largura, altura) {
+    const proporcao = Math.max(
+        largura / imagem.width,
+        altura / imagem.height
+    );
+
+    const larguraNova = imagem.width * proporcao;
+    const alturaNova = imagem.height * proporcao;
+
+    const deslocamentoX = (largura - larguraNova) / 2;
+    const deslocamentoY = (altura - alturaNova) / 2;
+
+    ctx.save();
+    arredondarRetangulo(ctx, x, y, largura, altura, 18);
+    ctx.clip();
+
+    ctx.drawImage(
+        imagem,
+        x + deslocamentoX,
+        y + deslocamentoY,
+        larguraNova,
+        alturaNova
+    );
+
+    ctx.restore();
+}
+
+async function gerarCardPublicacao(publicacao) {
+    const largura = 1200;
+    const margem = 64;
+    const larguraTexto = largura - margem * 2;
+
+    const texto = publicacao.texto || '';
+    const autorNome = publicacao.autorNome || 'Usuário';
+    const username = publicacao.autorUsername || 'usuario';
+
+    const avatar = await carregarImagem(
+        publicacao.avatarURL
+    );
+
+    const imagemMidia = publicacao.imagemURL
+        ? await carregarImagem(publicacao.imagemURL)
+        : null;
+
+    const data = new Date(publicacao.data || Date.now());
+
+    const dataFormatada = new Intl.DateTimeFormat('pt-BR', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+        timeZone: FUSO_HORARIO
+    }).format(data);
+
+    const canvasMedida = createCanvas(largura, 100);
+    const ctxMedida = canvasMedida.getContext('2d');
+
+    ctxMedida.font = '32px Arial';
+
+    const linhas = quebrarTexto(
+        ctxMedida,
+        texto || ' ',
+        larguraTexto
+    );
+
+    const alturaTexto = Math.max(1, linhas.length) * 43;
+    const alturaImagem = imagemMidia ? 480 : 0;
+
+    const altura =
+        270 +
+        alturaTexto +
+        (imagemMidia ? alturaImagem + 35 : 0) +
+        160;
+
+    const canvas = createCanvas(largura, altura);
+    const ctx = canvas.getContext('2d');
+
+    // Fundo
+    ctx.fillStyle = '#08090d';
+    ctx.fillRect(0, 0, largura, altura);
+
+    // Borda
+    ctx.strokeStyle = '#292b33';
+    ctx.lineWidth = 3;
+    arredondarRetangulo(ctx, 2, 2, largura - 4, altura - 4, 28);
+    ctx.stroke();
+
+    // Avatar
+    if (avatar) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(112, 112, 48, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.drawImage(avatar, 64, 64, 96, 96);
+        ctx.restore();
+    } else {
+        ctx.fillStyle = '#292b33';
+        ctx.beginPath();
+        ctx.arc(112, 112, 48, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // Nome
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 36px Arial';
+    ctx.fillText(autorNome.slice(0, 35), 190, 100);
+
+    // Selo de verificação
+    if (publicacao.verificado) {
+        const nomeLargura = ctx.measureText(
+            autorNome.slice(0, 35)
+        ).width;
+
+        const seloX = Math.min(190 + nomeLargura + 22, 1030);
+
+        ctx.fillStyle = '#ed4245';
+        ctx.beginPath();
+        ctx.arc(seloX, 88, 17, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 20px Arial';
+        ctx.fillText('✓', seloX - 7, 95);
+    }
+
+    // Username
+    ctx.fillStyle = '#9b9da7';
+    ctx.font = '25px Arial';
+    ctx.fillText(`@${username}`.slice(0, 45), 190, 140);
+
+    // Identificação da plataforma
+    ctx.fillStyle = '#ed4245';
+    ctx.font = 'bold 19px Arial';
+    ctx.fillText('ZODÍACO', 190, 178);
+
+    // Texto
+    let y = 235;
+
+    ctx.fillStyle = '#f5f5f7';
+    ctx.font = '32px Arial';
+
+    for (const linha of linhas) {
+        ctx.fillText(linha, margem, y);
+        y += 43;
+    }
+
+    y += 18;
+
+    // Imagem da publicação
+    if (imagemMidia) {
+        desenharImagemCortada(
+            ctx,
+            imagemMidia,
+            margem,
+            y,
+            larguraTexto,
+            alturaImagem
+        );
+
+        y += alturaImagem + 35;
+    }
+
+    // Separador
+    ctx.strokeStyle = '#292b33';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(margem, altura - 135);
+    ctx.lineTo(largura - margem, altura - 135);
+    ctx.stroke();
+
+    // Data
+    ctx.fillStyle = '#8d909a';
+    ctx.font = '22px Arial';
+    ctx.fillText(dataFormatada, margem, altura - 95);
+
+    // Contadores
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 25px Arial';
+
+    const curtidas = publicacao.curtidas?.length || 0;
+    const comentarios = publicacao.comentarios?.length || 0;
+    const republicacoes = publicacao.republicacoes?.length || 0;
+
+    ctx.fillText(`${curtidas} curtidas`, margem, altura - 42);
+    ctx.fillText(
+        `${comentarios} comentários`,
+        margem + 280,
+        altura - 42
+    );
+    ctx.fillText(
+        `${republicacoes} republicações`,
+        margem + 650,
+        altura - 42
+    );
+
+    return canvas.toBuffer('image/png');
+}
+
+// ======================================================
+// ATUALIZAR CARD PUBLICADO
+// ======================================================
+
+async function atualizarCardPublicacao(publicacaoId) {
+    const publicacoes = obterPublicacoes();
+    const publicacao = publicacoes[publicacaoId];
+
+    if (!publicacao?.mensagemPublicadaId) return;
+
+    try {
+        const canal = await client.channels.fetch(
+            publicacao.canalId
+        ).catch(() => null);
+
+        if (!canal) return;
+
+        const mensagem = await canal.messages.fetch(
+            publicacao.mensagemPublicadaId
+        ).catch(() => null);
+
+        if (!mensagem) return;
+
+        const buffer = await gerarCardPublicacao(publicacao);
+
+        const arquivo = new AttachmentBuilder(buffer, {
+            name: `publicacao-${publicacaoId}.png`
+        });
+
+        await mensagem.edit({
+            attachments: [],
+            files: [arquivo],
+            components: criarBotoesPublicacao(publicacaoId)
+        });
+    } catch (erro) {
+        console.error('Erro ao atualizar card:', erro);
+    }
+}
+
+// ======================================================
+// PUBLICAR MENSAGEM
 // ======================================================
 
 async function publicarMensagem(mensagem) {
@@ -708,12 +942,19 @@ async function publicarMensagem(mensagem) {
 
     const texto = mensagem.content?.trim() || '';
 
-    const imagens = [...mensagem.attachments.values()].filter(anexo =>
+    const anexos = [...mensagem.attachments.values()];
+
+    const imagens = anexos.filter(anexo =>
         anexo.contentType?.startsWith('image/') ||
         /\.(png|jpe?g|gif|webp)$/i.test(anexo.name || '')
     );
 
-    if (!texto && imagens.length === 0) return;
+    const videos = anexos.filter(anexo =>
+        anexo.contentType?.startsWith('video/') ||
+        /\.(mp4|mov|webm)$/i.test(anexo.name || '')
+    );
+
+    if (!texto && anexos.length === 0) return;
 
     try {
         const canal = await mensagem.guild.channels
@@ -728,30 +969,14 @@ async function publicarMensagem(mensagem) {
             mensagem.author.globalName ||
             mensagem.author.username;
 
-        const textoPainel =
-            `# ${autor}\n-# ZODÍACO • PUBLICAÇÃO • <t:${Math.floor(data.getTime() / 1000)}:F>\n\n` +
-            (texto.slice(0, 3500) || '\u200B');
-
-        const componentesPainel = [
-            new ContainerBuilder().addTextDisplayComponents(
-                new TextDisplayBuilder().setContent(textoPainel)
-            )
-        ];
-
-        const arquivos = [];
-        if (imagens.length > 0) {
-            componentesPainel[0].addMediaGalleryComponents(
-                new MediaGalleryBuilder().addItems(
-                    new MediaGalleryItemBuilder().setURL(imagens[0].url)
-                )
-            );
-        }
-
-        const publicacoes = obterPublicacoes();
-
-        publicacoes[mensagem.id] = {
+        const publicacao = {
             autorId: mensagem.author.id,
             autorNome: autor,
+            autorUsername: mensagem.author.username,
+            avatarURL: mensagem.author.displayAvatarURL({
+                extension: 'png',
+                size: 256
+            }),
             guildId: mensagem.guild.id,
             canalId: mensagem.channelId,
             mensagemOriginalId: mensagem.id,
@@ -759,12 +984,50 @@ async function publicarMensagem(mensagem) {
             texto,
             curtidas: [],
             comentarios: [],
-            data: data.toISOString()
+            republicacoes: [],
+            data: data.toISOString(),
+            verificado: usuarioVerificado(mensagem.author.id),
+            imagemURL: imagens[0]?.url || null,
+            video: videos.length > 0
         };
 
+        const buffer = await gerarCardPublicacao(publicacao);
+
+        const arquivos = [
+            new AttachmentBuilder(buffer, {
+                name: `publicacao-${mensagem.id}.png`
+            })
+        ];
+
+        // O vídeo original é anexado à publicação.
+        // Ele continua sendo um vídeo, não é convertido em imagem.
+        for (const video of videos.slice(0, 2)) {
+            try {
+                const resposta = await fetch(video.url);
+
+                if (!resposta.ok) continue;
+
+                const dados = Buffer.from(
+                    await resposta.arrayBuffer()
+                );
+
+                arquivos.push(
+                    new AttachmentBuilder(dados, {
+                        name: video.name || 'video.mp4'
+                    })
+                );
+            } catch (erro) {
+                console.warn('Não consegui copiar o vídeo:', erro.message);
+            }
+        }
+
+        const publicacoes = obterPublicacoes();
+        publicacoes[mensagem.id] = publicacao;
+        salvarPublicacoes(publicacoes);
+
         const publicada = await canal.send({
-            components: [...componentesPainel, ...criarBotoesPublicacao(mensagem.id)],
-            flags: MessageFlags.IsComponentsV2
+            files: arquivos,
+            components: criarBotoesPublicacao(mensagem.id)
         });
 
         publicacoes[mensagem.id].mensagemPublicadaId = publicada.id;
@@ -777,14 +1040,14 @@ async function publicarMensagem(mensagem) {
             );
         });
 
-        console.log(`📣 Publicação criada: ${mensagem.id}`);
+        console.log(`Publicação criada: ${mensagem.id}`);
     } catch (erro) {
         console.error('Erro ao publicar mensagem:', erro);
     }
 }
 
 // ======================================================
-// LIMPEZA SEMANAL DE MENSAGENS
+// LIMPEZA SEMANAL
 // ======================================================
 
 async function limparCanalSemanal() {
@@ -794,20 +1057,16 @@ async function limparCanalSemanal() {
             .catch(() => null);
 
         if (!canal?.isTextBased() || !canal.messages) {
-            console.error(
-                '❌ Canal de limpeza não encontrado ou inválido.'
-            );
+            console.error('Canal de limpeza não encontrado ou inválido.');
             return;
         }
 
         let total = 0;
 
         while (true) {
-            const mensagens = await canal.messages.fetch({
-                limit: 100
-            });
+            const mensagens = await canal.messages.fetch({ limit: 100 });
 
-            if (mensagens.size === 0) break;
+            if (!mensagens.size) break;
 
             const recentes = mensagens.filter(m =>
                 Date.now() - m.createdTimestamp <
@@ -819,7 +1078,7 @@ async function limparCanalSemanal() {
                 14 * 24 * 60 * 60 * 1000
             );
 
-            if (recentes.size > 0) {
+            if (recentes.size) {
                 const excluidas = await canal.bulkDelete(
                     recentes,
                     true
@@ -833,9 +1092,7 @@ async function limparCanalSemanal() {
                     .then(() => total++)
                     .catch(() => null);
 
-                await new Promise(resolve =>
-                    setTimeout(resolve, 350)
-                );
+                await new Promise(resolve => setTimeout(resolve, 350));
             }
 
             if (mensagens.size < 100) break;
@@ -846,9 +1103,7 @@ async function limparCanalSemanal() {
         estado.totalExcluidas = total;
         salvarJSON(ARQUIVO_LIMPEZA, estado);
 
-        console.log(
-            `✅ Limpeza concluída. Total excluído: ${total}`
-        );
+        console.log(`Limpeza concluída. Total excluído: ${total}`);
     } catch (erro) {
         console.error('Erro na limpeza semanal:', erro);
     }
@@ -863,7 +1118,7 @@ cron.schedule('0 0 * * 0', limparCanalSemanal, {
 // ======================================================
 
 client.once('clientReady', async () => {
-    console.log(`🤖 Bot online: ${client.user.tag}`);
+    console.log(`Bot online: ${client.user.tag}`);
 
     atualizarAtividade();
 
@@ -910,7 +1165,6 @@ client.on('voiceStateUpdate', async (anterior, atual) => {
 
 client.on('messageCreate', async mensagem => {
     try {
-        // PRIMEIRO: verifica se a mensagem é um banner do perfil.
         const comandoPerfil = client.commands.get('perfil');
 
         if (
@@ -920,9 +1174,7 @@ client.on('messageCreate', async mensagem => {
             return;
         }
 
-        // DEPOIS: processa normalmente o sistema de publicações.
         await publicarMensagem(mensagem);
-
     } catch (erro) {
         console.error('Erro em messageCreate:', erro);
     }
@@ -934,14 +1186,19 @@ client.on('messageCreate', async mensagem => {
 
 client.on('interactionCreate', async interaction => {
     try {
-        // SISTEMA DE PERFIL
+        // PERFIL
         const comandoPerfil = client.commands.get('perfil');
-        if (comandoPerfil?.handleInteraction && await comandoPerfil.handleInteraction(interaction, client)) {
+
+        if (
+            comandoPerfil?.handleInteraction &&
+            await comandoPerfil.handleInteraction(interaction, client)
+        ) {
             return;
         }
 
-        // SISTEMA DE TICKETS
+        // TICKETS
         const comandoTicket = client.commands.get('ticket');
+
         if (
             comandoTicket?.handleInteraction &&
             await comandoTicket.handleInteraction(interaction, client)
@@ -951,15 +1208,10 @@ client.on('interactionCreate', async interaction => {
 
         // COMANDOS SLASH
         if (interaction.isChatInputCommand()) {
-            const comando = client.commands.get(
-                interaction.commandName
-            );
+            const comando = client.commands.get(interaction.commandName);
 
             if (!comando) {
-                return responderErro(
-                    interaction,
-                    '❌ Comando não encontrado.'
-                );
+                return responderErro(interaction, 'Comando não encontrado.');
             }
 
             try {
@@ -972,7 +1224,7 @@ client.on('interactionCreate', async interaction => {
 
                 await responderErro(
                     interaction,
-                    '❌ Erro ao executar o comando.'
+                    'Erro ao executar o comando.'
                 );
             }
 
@@ -989,7 +1241,7 @@ client.on('interactionCreate', async interaction => {
                 if (!comandoCargos?.handleSelect) {
                     return responderErro(
                         interaction,
-                        '❌ O sistema de cargos não está carregado.'
+                        'O sistema de cargos não está carregado.'
                     );
                 }
 
@@ -1008,23 +1260,21 @@ client.on('interactionCreate', async interaction => {
                     if (!interaction.member?.voice?.channel) {
                         return responderErro(
                             interaction,
-                            '❌ Entre em uma chamada primeiro.'
+                            'Entre em uma chamada primeiro.'
                         );
                     }
 
                     try {
                         await interaction.member.voice.setMute(false);
-
                         return responderSucesso(
                             interaction,
-                            '🔊 Seu mute de servidor foi removido.'
+                            'Seu mute de servidor foi removido.'
                         );
                     } catch (erro) {
                         console.error('Erro ao desmutar:', erro);
-
                         return responderErro(
                             interaction,
-                            '❌ Não consegui retirar seu mute. Verifique as permissões do bot.'
+                            'Não consegui retirar seu mute.'
                         );
                     }
                 }
@@ -1032,7 +1282,7 @@ client.on('interactionCreate', async interaction => {
                 if (!canal) {
                     return responderErro(
                         interaction,
-                        '❌ Entre em uma chamada antes de usar esta ferramenta.'
+                        'Entre em uma chamada antes de usar esta ferramenta.'
                     );
                 }
 
@@ -1043,35 +1293,29 @@ client.on('interactionCreate', async interaction => {
                     if (!podeAlterarPrivacidade(interaction, canal)) {
                         return responderErro(
                             interaction,
-                            '❌ Você precisa estar na chamada que deseja controlar.'
+                            'Você precisa estar na chamada que deseja controlar.'
                         );
                     }
 
                     try {
                         if (opcao === 'privar_call') {
                             await privarCall(canal);
-
                             return responderSucesso(
                                 interaction,
-                                '🔒 A chamada foi privatizada. Os membros que já estão nela continuam com acesso.'
+                                'A chamada foi privatizada.'
                             );
                         }
 
                         await liberarCall(canal);
-
                         return responderSucesso(
                             interaction,
-                            '🔓 A chamada voltou a ser pública.'
+                            'A chamada voltou a ser pública.'
                         );
                     } catch (erro) {
-                        console.error(
-                            'Erro ao alterar privacidade pelo menu:',
-                            erro
-                        );
-
+                        console.error('Erro ao alterar privacidade:', erro);
                         return responderErro(
                             interaction,
-                            '❌ Não consegui alterar a privacidade. Confira se o bot tem Gerenciar canais.'
+                            'Não consegui alterar a privacidade.'
                         );
                     }
                 }
@@ -1082,7 +1326,7 @@ client.on('interactionCreate', async interaction => {
                 ) {
                     return responderErro(
                         interaction,
-                        '❌ Você precisa estar dentro de uma call temporária para usar este controle.'
+                        'Você precisa estar dentro de uma call temporária.'
                     );
                 }
 
@@ -1115,8 +1359,7 @@ client.on('interactionCreate', async interaction => {
                         .setMaxValues(1);
 
                     return interaction.reply({
-                        content:
-                            '➡️ Selecione o membro que deseja mover para sua chamada.',
+                        content: 'Selecione quem deseja mover para sua call.',
                         components: [
                             new ActionRowBuilder().addComponents(seletor)
                         ],
@@ -1128,7 +1371,7 @@ client.on('interactionCreate', async interaction => {
                     if (!ehBooster(interaction.member)) {
                         return responderErro(
                             interaction,
-                            '❌ Este recurso é exclusivo para Boosters.'
+                            'Este recurso é exclusivo para Boosters.'
                         );
                     }
 
@@ -1139,7 +1382,7 @@ client.on('interactionCreate', async interaction => {
                         .setMaxValues(1);
 
                     return interaction.reply({
-                        content: '🔇 Selecione quem deseja mutar.',
+                        content: 'Selecione quem deseja mutar.',
                         components: [
                             new ActionRowBuilder().addComponents(seletor)
                         ],
@@ -1149,7 +1392,7 @@ client.on('interactionCreate', async interaction => {
 
                 return responderErro(
                     interaction,
-                    '❌ Esta ferramenta não é reconhecida.'
+                    'Esta ferramenta não é reconhecida.'
                 );
             }
 
@@ -1171,6 +1414,7 @@ client.on('interactionCreate', async interaction => {
                 });
             }
 
+            // CONTROLE DE CALL: LIMITE
             if (id === 'call_limite') {
                 const canal = obterCall(interaction);
 
@@ -1181,7 +1425,7 @@ client.on('interactionCreate', async interaction => {
                 ) {
                     return responderErro(
                         interaction,
-                        '❌ Entre em uma call temporária para usar esse controle.'
+                        'Entre em uma call temporária para usar esse controle.'
                     );
                 }
 
@@ -1205,6 +1449,7 @@ client.on('interactionCreate', async interaction => {
                 return interaction.showModal(modal);
             }
 
+            // CONTROLE DE CALL: MOVER
             if (id === 'call_mover') {
                 const canal = obterCall(interaction);
 
@@ -1215,7 +1460,7 @@ client.on('interactionCreate', async interaction => {
                 ) {
                     return responderErro(
                         interaction,
-                        '❌ Entre em uma call temporária para usar esse controle.'
+                        'Entre em uma call temporária para usar esse controle.'
                     );
                 }
 
@@ -1226,7 +1471,7 @@ client.on('interactionCreate', async interaction => {
                     .setMaxValues(1);
 
                 return interaction.reply({
-                    content: '➡️ Selecione quem deseja mover para sua call.',
+                    content: 'Selecione quem deseja mover para sua call.',
                     components: [
                         new ActionRowBuilder().addComponents(seletor)
                     ],
@@ -1234,11 +1479,12 @@ client.on('interactionCreate', async interaction => {
                 });
             }
 
+            // CONTROLE DE CALL: MUTAR
             if (id === 'call_mutar') {
                 if (!ehBooster(interaction.member)) {
                     return responderErro(
                         interaction,
-                        '❌ Este recurso é exclusivo para Boosters.'
+                        'Este recurso é exclusivo para Boosters.'
                     );
                 }
 
@@ -1251,7 +1497,7 @@ client.on('interactionCreate', async interaction => {
                 ) {
                     return responderErro(
                         interaction,
-                        '❌ Entre em uma call temporária para usar esse controle.'
+                        'Entre em uma call temporária para usar esse controle.'
                     );
                 }
 
@@ -1262,7 +1508,7 @@ client.on('interactionCreate', async interaction => {
                     .setMaxValues(1);
 
                 return interaction.reply({
-                    content: '🔇 Selecione quem deseja mutar.',
+                    content: 'Selecione quem deseja mutar.',
                     components: [
                         new ActionRowBuilder().addComponents(seletor)
                     ],
@@ -1270,78 +1516,72 @@ client.on('interactionCreate', async interaction => {
                 });
             }
 
+            // CONTROLE DE CALL: DESMUTAR
             if (id === 'call_desmutar') {
                 if (!interaction.member?.voice?.channel) {
                     return responderErro(
                         interaction,
-                        '❌ Entre em uma call primeiro.'
+                        'Entre em uma call primeiro.'
                     );
                 }
 
                 try {
                     await interaction.member.voice.setMute(false);
-
                     return responderSucesso(
                         interaction,
-                        '🔊 Seu mute de servidor foi removido.'
+                        'Seu mute de servidor foi removido.'
                     );
                 } catch (erro) {
                     console.error('Erro ao desmutar:', erro);
-
                     return responderErro(
                         interaction,
-                        '❌ Não consegui retirar seu mute. Confira as permissões do bot.'
+                        'Não consegui retirar seu mute.'
                     );
                 }
             }
 
+            // CONTROLE DE CALL: PRIVACIDADE
             if (id === 'call_privada' || id === 'call_publica') {
                 const canal = obterCall(interaction);
 
                 if (!canal) {
                     return responderErro(
                         interaction,
-                        '❌ Entre em uma chamada primeiro.'
+                        'Entre em uma chamada primeiro.'
                     );
                 }
 
                 if (!podeAlterarPrivacidade(interaction, canal)) {
                     return responderErro(
                         interaction,
-                        '❌ Você precisa estar na chamada que deseja controlar.'
+                        'Você precisa estar na chamada que deseja controlar.'
                     );
                 }
 
                 try {
                     if (id === 'call_privada') {
                         await privarCall(canal);
-
                         return responderSucesso(
                             interaction,
-                            '🔒 Sua call foi privatizada. Os membros que já estão nela continuam com acesso.'
+                            'Sua call foi privatizada.'
                         );
                     }
 
                     await liberarCall(canal);
-
                     return responderSucesso(
                         interaction,
-                        '🔓 Sua call voltou a ser pública.'
+                        'Sua call voltou a ser pública.'
                     );
                 } catch (erro) {
-                    console.error(
-                        'Erro ao alterar privacidade da call:',
-                        erro
-                    );
-
+                    console.error('Erro ao alterar privacidade:', erro);
                     return responderErro(
                         interaction,
-                        '❌ Não consegui alterar a privacidade. Confira as permissões do bot.'
+                        'Não consegui alterar a privacidade.'
                     );
                 }
             }
 
-            // CURTIDAS
+            // CURTIR PUBLICAÇÃO
             if (id.startsWith('pub_like_')) {
                 const publicacaoId = id.slice('pub_like_'.length);
                 const publicacoes = obterPublicacoes();
@@ -1350,7 +1590,7 @@ client.on('interactionCreate', async interaction => {
                 if (!publicacao) {
                     return responderErro(
                         interaction,
-                        '❌ Publicação não encontrada.'
+                        'Publicação não encontrada.'
                     );
                 }
 
@@ -1364,32 +1604,46 @@ client.on('interactionCreate', async interaction => {
 
                 if (indice !== -1) {
                     publicacao.curtidas.splice(indice, 1);
-                    salvarPublicacoes(publicacoes);
-
-                    return responderSucesso(
-                        interaction,
-                        '❤️ Você removeu sua curtida.'
-                    );
+                } else {
+                    publicacao.curtidas.push(interaction.user.id);
                 }
 
-                publicacao.curtidas.push(interaction.user.id);
+                salvarPublicacoes(publicacoes);
+                atualizarVerificacoes(publicacoes);
+
+                // Atualiza o selo em todas as publicações futuras do autor.
+                const verificado = usuarioVerificado(publicacao.autorId);
+
+                for (const item of Object.values(publicacoes)) {
+                    if (item.autorId === publicacao.autorId) {
+                        item.verificado = verificado;
+                    }
+                }
+
                 salvarPublicacoes(publicacoes);
 
-                return responderSucesso(
-                    interaction,
-                    `❤️ Você curtiu a publicação! Total: ${publicacao.curtidas.length}`
-                );
+                await interaction.deferReply({
+                    flags: MessageFlags.Ephemeral
+                });
+
+                await atualizarCardPublicacao(publicacaoId);
+
+                return interaction.editReply({
+                    content: indice !== -1
+                        ? 'Você removeu sua curtida.'
+                        : 'Você curtiu a publicação!'
+                });
             }
 
-            // COMENTÁRIOS
+            // ABRIR MODAL DE COMENTÁRIO
             if (id.startsWith('pub_comentar_')) {
                 const publicacaoId = id.slice('pub_comentar_'.length);
-                const publicacoes = obterPublicacoes();
+                const publicacao = obterPublicacoes()[publicacaoId];
 
-                if (!publicacoes[publicacaoId]) {
+                if (!publicacao) {
                     return responderErro(
                         interaction,
-                        '❌ Publicação não encontrada.'
+                        'Publicação não encontrada.'
                     );
                 }
 
@@ -1411,54 +1665,109 @@ client.on('interactionCreate', async interaction => {
                 return interaction.showModal(modal);
             }
 
-            // COMPARTILHAR
-            if (id.startsWith('pub_compartilhar_')) {
-                const publicacaoId = id.slice('pub_compartilhar_'.length);
+            // REPUBLICAR
+            if (id.startsWith('pub_republicar_')) {
+                const publicacaoId = id.slice('pub_republicar_'.length);
                 const publicacoes = obterPublicacoes();
                 const publicacao = publicacoes[publicacaoId];
 
                 if (!publicacao) {
                     return responderErro(
                         interaction,
-                        '❌ Publicação não encontrada.'
+                        'Publicação não encontrada.'
                     );
                 }
 
-                const mensagemId = publicacao.mensagemPublicadaId;
+                if (!Array.isArray(publicacao.republicacoes)) {
+                    publicacao.republicacoes = [];
+                }
 
-                const link = mensagemId
-                    ? `https://discord.com/channels/${publicacao.guildId}/${CANAL_PUBLICACOES_ID}/${mensagemId}`
+                if (
+                    publicacao.republicacoes.includes(interaction.user.id)
+                ) {
+                    return responderErro(
+                        interaction,
+                        'Você já republicou esta publicação.'
+                    );
+                }
+
+                publicacao.republicacoes.push(interaction.user.id);
+                salvarPublicacoes(publicacoes);
+
+                const link = publicacao.mensagemPublicadaId
+                    ? `https://discord.com/channels/${publicacao.guildId}/${publicacao.canalId}/${publicacao.mensagemPublicadaId}`
                     : null;
 
-                return responderSucesso(
-                    interaction,
-                    link
-                        ? `🔁 Compartilhe esta publicação:\n${link}`
-                        : '❌ Não consegui gerar o link.'
-                );
+                await interaction.deferReply({
+                    flags: MessageFlags.Ephemeral
+                });
+
+                await atualizarCardPublicacao(publicacaoId);
+
+                // Cria uma mensagem de republicação com referência à original.
+                const canal = await client.channels
+                    .fetch(publicacao.canalId)
+                    .catch(() => null);
+
+                if (canal?.isTextBased()) {
+                    await canal.send({
+                        content:
+                            `**${interaction.user.username} republicou uma publicação.**\n` +
+                            (link ? `Publicação original: ${link}` : '')
+                    }).catch(erro => {
+                        console.error('Erro ao enviar republicação:', erro);
+                    });
+                }
+
+                return interaction.editReply({
+                    content: 'Você republicou esta publicação!'
+                });
             }
 
-            // DETALHES
+            // INFORMAÇÕES DA PUBLICAÇÃO
             if (id.startsWith('pub_detalhes_')) {
                 const publicacaoId = id.slice('pub_detalhes_'.length);
-                const publicacoes = obterPublicacoes();
-                const publicacao = publicacoes[publicacaoId];
+                const publicacao = obterPublicacoes()[publicacaoId];
 
                 if (!publicacao) {
                     return responderErro(
                         interaction,
-                        '❌ Publicação não encontrada.'
+                        'Publicação não encontrada.'
                     );
                 }
+
+                const curtidas = publicacao.curtidas || [];
+                const comentarios = publicacao.comentarios || [];
+                const republicacoes = publicacao.republicacoes || [];
+
+                const listaCurtidas = curtidas.length
+                    ? curtidas.slice(0, 15).map(usuarioId => `<@${usuarioId}>`).join(', ')
+                    : 'Ninguém curtiu ainda.';
+
+                const listaRepublicacoes = republicacoes.length
+                    ? republicacoes.slice(0, 15).map(usuarioId => `<@${usuarioId}>`).join(', ')
+                    : 'Ninguém republicou ainda.';
+
+                const listaComentarios = comentarios.length
+                    ? comentarios.slice(-10).map(comentario =>
+                        `**${comentario.autorNome || 'Usuário'}:** ${comentario.texto}`
+                    ).join('\n\n')
+                    : 'Nenhum comentário ainda.';
 
                 const painelDetalhes = new ContainerBuilder()
                     .addTextDisplayComponents(
                         new TextDisplayBuilder().setContent(
-                            '# ℹ️ Detalhes da publicação\n\n' +
+                            '# Informações da publicação\n\n' +
                             `**Autor:** <@${publicacao.autorId}>\n` +
-                            `**Curtidas:** ${publicacao.curtidas?.length || 0}\n` +
-                            `**Comentários:** ${publicacao.comentarios?.length || 0}\n\n` +
-                            `**Texto:**\n${publicacao.texto?.slice(0, 1800) || 'Sem texto.'}`
+                            `**Curtidas:** ${curtidas.length}\n` +
+                            `**Comentários:** ${comentarios.length}\n` +
+                            `**Republicações:** ${republicacoes.length}\n\n` +
+                            '## Pessoas que curtiram\n' +
+                            `${listaCurtidas}\n\n` +
+                            '## Pessoas que republicaram\n' +
+                            `${listaRepublicacoes}\n\n` +
+                            '## Comentários recentes\n' +
+                            `${listaComentarios.slice(0, 2500)}`
                         )
                     );
 
@@ -1492,7 +1801,7 @@ client.on('interactionCreate', async interaction => {
             ) {
                 return responderErro(
                     interaction,
-                    '❌ Entre em uma call temporária para usar esse controle.'
+                    'Entre em uma call temporária para usar esse controle.'
                 );
             }
 
@@ -1503,30 +1812,29 @@ client.on('interactionCreate', async interaction => {
             if (!alvo) {
                 return responderErro(
                     interaction,
-                    '❌ Não encontrei esse membro.'
+                    'Não encontrei esse membro.'
                 );
             }
 
-            // MUTAR MEMBRO
             if (id === 'call_selecionar_mutar') {
                 if (!ehBooster(interaction.member)) {
                     return responderErro(
                         interaction,
-                        '❌ Opção exclusiva para Boosters.'
+                        'Opção exclusiva para Boosters.'
                     );
                 }
 
                 if (alvo.id === interaction.user.id) {
                     return responderErro(
                         interaction,
-                        '❌ Selecione outro membro.'
+                        'Selecione outro membro.'
                     );
                 }
 
                 if (alvo.voice.channelId !== canal.id) {
                     return responderErro(
                         interaction,
-                        '❌ O membro precisa estar na sua call.'
+                        'O membro precisa estar na sua call.'
                     );
                 }
 
@@ -1534,15 +1842,14 @@ client.on('interactionCreate', async interaction => {
                     await alvo.voice.setMute(true);
 
                     return interaction.update({
-                        content: `🔇 ${alvo} foi mutado no servidor.`,
+                        content: `${alvo} foi mutado no servidor.`,
                         components: []
                     });
                 } catch (erro) {
                     console.error('Erro ao mutar membro:', erro);
-
                     return responderErro(
                         interaction,
-                        '❌ Não consegui mutar esse membro. Confira as permissões do bot.'
+                        'Não consegui mutar esse membro.'
                     );
                 }
             }
@@ -1550,14 +1857,14 @@ client.on('interactionCreate', async interaction => {
             if (!alvo.voice.channel) {
                 return responderErro(
                     interaction,
-                    '❌ Esse membro não está em uma call.'
+                    'Esse membro não está em uma call.'
                 );
             }
 
             if (alvo.id === interaction.user.id) {
                 return responderErro(
                     interaction,
-                    '❌ Selecione outro membro.'
+                    'Selecione outro membro.'
                 );
             }
 
@@ -1574,7 +1881,7 @@ client.on('interactionCreate', async interaction => {
 
                 return interaction.update({
                     content:
-                        `👤 Membro selecionado: **${alvo.user.username}**\nEscolha a call de destino:`,
+                        `Membro selecionado: **${alvo.user.username}**\nEscolha a call de destino:`,
                     components: [
                         new ActionRowBuilder().addComponents(seletor)
                     ]
@@ -1586,7 +1893,7 @@ client.on('interactionCreate', async interaction => {
             if (!botMembro.permissions.has(PermissionFlagsBits.MoveMembers)) {
                 return responderErro(
                     interaction,
-                    '❌ Preciso da permissão Mover membros.'
+                    'Preciso da permissão Mover membros.'
                 );
             }
 
@@ -1594,15 +1901,14 @@ client.on('interactionCreate', async interaction => {
                 await alvo.voice.setChannel(canal);
 
                 return interaction.update({
-                    content: `✅ ${alvo} foi movido para ${canal}.`,
+                    content: `${alvo} foi movido para ${canal}.`,
                     components: []
                 });
             } catch (erro) {
                 console.error('Erro ao mover membro:', erro);
-
                 return responderErro(
                     interaction,
-                    '❌ Não consegui mover esse membro. Confira as permissões do bot.'
+                    'Não consegui mover esse membro.'
                 );
             }
         }
@@ -1621,7 +1927,7 @@ client.on('interactionCreate', async interaction => {
             ) {
                 return responderErro(
                     interaction,
-                    '❌ Entre em uma call temporária para usar esse controle.'
+                    'Entre em uma call temporária para usar esse controle.'
                 );
             }
 
@@ -1634,7 +1940,7 @@ client.on('interactionCreate', async interaction => {
             if (!alvo || !alvo.voice.channel) {
                 return responderErro(
                     interaction,
-                    '❌ Esse membro não está mais em uma call.'
+                    'Esse membro não está mais em uma call.'
                 );
             }
 
@@ -1651,7 +1957,7 @@ client.on('interactionCreate', async interaction => {
             ) {
                 return responderErro(
                     interaction,
-                    '❌ Canal de destino inválido.'
+                    'Canal de destino inválido.'
                 );
             }
 
@@ -1660,7 +1966,7 @@ client.on('interactionCreate', async interaction => {
             if (!botMembro.permissions.has(PermissionFlagsBits.MoveMembers)) {
                 return responderErro(
                     interaction,
-                    '❌ Preciso da permissão Mover membros.'
+                    'Preciso da permissão Mover membros.'
                 );
             }
 
@@ -1668,22 +1974,21 @@ client.on('interactionCreate', async interaction => {
                 await alvo.voice.setChannel(destino);
 
                 return interaction.update({
-                    content: `✅ ${alvo} foi movido para ${destino}.`,
+                    content: `${alvo} foi movido para ${destino}.`,
                     components: []
                 });
             } catch (erro) {
                 console.error('Erro ao mover membro:', erro);
-
                 return responderErro(
                     interaction,
-                    '❌ Não consegui mover o membro para essa call.'
+                    'Não consegui mover o membro para essa call.'
                 );
             }
         }
 
-        // FORMULÁRIOS / MODAIS
+        // MODAIS
         if (interaction.isModalSubmit()) {
-            // LIMITE DE PESSOAS
+            // LIMITE DA CALL
             if (interaction.customId === 'modal_limite_call') {
                 const canal = obterCall(interaction);
 
@@ -1694,22 +1999,18 @@ client.on('interactionCreate', async interaction => {
                 ) {
                     return responderErro(
                         interaction,
-                        '❌ Entre em uma call temporária para usar esse controle.'
+                        'Entre em uma call temporária para usar esse controle.'
                     );
                 }
 
-                const campoId = interaction.fields.fields.has('limite')
-                    ? 'limite'
-                    : 'limite_pessoas';
-
                 const valor = interaction.fields
-                    .getTextInputValue(campoId)
+                    .getTextInputValue('limite')
                     .trim();
 
                 if (!/^\d{1,2}$/.test(valor) || Number(valor) > 99) {
                     return responderErro(
                         interaction,
-                        '❌ Digite um número de 0 a 99. Use 0 para remover o limite.'
+                        'Digite um número de 0 a 99.'
                     );
                 }
 
@@ -1719,15 +2020,14 @@ client.on('interactionCreate', async interaction => {
                     return responderSucesso(
                         interaction,
                         Number(valor) === 0
-                            ? '✅ Limite removido.'
-                            : `✅ Limite definido para ${valor} pessoas.`
+                            ? 'Limite removido.'
+                            : `Limite definido para ${valor} pessoas.`
                     );
                 } catch (erro) {
                     console.error('Erro ao definir limite:', erro);
-
                     return responderErro(
                         interaction,
-                        '❌ Não consegui alterar o limite da call.'
+                        'Não consegui alterar o limite da call.'
                     );
                 }
             }
@@ -1740,7 +2040,7 @@ client.on('interactionCreate', async interaction => {
                 if (!ehBooster(membro)) {
                     return responderErro(
                         interaction,
-                        '❌ Opção exclusiva para Boosters.'
+                        'Opção exclusiva para Boosters.'
                     );
                 }
 
@@ -1755,28 +2055,26 @@ client.on('interactionCreate', async interaction => {
                 if (!alvo || !alvo.voice.channel) {
                     return responderErro(
                         interaction,
-                        '❌ Não encontrei esse membro em uma call.'
+                        'Não encontrei esse membro em uma call.'
                     );
                 }
 
                 try {
                     await alvo.voice.setMute(true);
-
                     return responderSucesso(
                         interaction,
-                        '✅ Membro mutado com sucesso.'
+                        'Membro mutado com sucesso.'
                     );
                 } catch (erro) {
-                    console.error('Erro ao mutar membro pelo modal:', erro);
-
+                    console.error('Erro ao mutar membro:', erro);
                     return responderErro(
                         interaction,
-                        '❌ Não consegui mutar esse membro. Confira as permissões do bot.'
+                        'Não consegui mutar esse membro.'
                     );
                 }
             }
 
-            // COMENTÁRIO DE PUBLICAÇÃO
+            // COMENTÁRIO
             if (interaction.customId.startsWith('modal_comentario_')) {
                 const publicacaoId = interaction.customId
                     .slice('modal_comentario_'.length);
@@ -1787,7 +2085,7 @@ client.on('interactionCreate', async interaction => {
                 if (!publicacao) {
                     return responderErro(
                         interaction,
-                        '❌ Publicação não encontrada.'
+                        'Publicação não encontrada.'
                     );
                 }
 
@@ -1798,7 +2096,7 @@ client.on('interactionCreate', async interaction => {
                 if (!comentario) {
                     return responderErro(
                         interaction,
-                        '❌ Escreva um comentário.'
+                        'Escreva um comentário.'
                     );
                 }
 
@@ -1815,29 +2113,31 @@ client.on('interactionCreate', async interaction => {
 
                 salvarPublicacoes(publicacoes);
 
-                return responderSucesso(
-                    interaction,
-                    '✅ Seu comentário foi registrado.'
-                );
+                await interaction.deferReply({
+                    flags: MessageFlags.Ephemeral
+                });
+
+                await atualizarCardPublicacao(publicacaoId);
+
+                return interaction.editReply({
+                    content: 'Seu comentário foi registrado!'
+                });
             }
 
             return;
         }
     } catch (erro) {
-        console.error(
-            '❌ Erro geral em interactionCreate:',
-            erro
-        );
+        console.error('Erro geral em interactionCreate:', erro);
 
         await responderErro(
             interaction,
-            '❌ Ocorreu um erro ao processar essa interação.'
+            'Ocorreu um erro ao processar essa interação.'
         );
     }
 });
 
 // ======================================================
-// TRATAMENTO DE ERROS
+// ERROS
 // ======================================================
 
 process.on('unhandledRejection', erro => {
@@ -1854,13 +2154,10 @@ process.on('uncaughtException', erro => {
 
 if (!TOKEN) {
     console.error(
-        '❌ DISCORD_TOKEN não foi encontrado nas variáveis de ambiente.'
+        'DISCORD_TOKEN não foi encontrado nas variáveis de ambiente.'
     );
 } else {
     client.login(TOKEN).catch(erro => {
-        console.error(
-            '❌ Não foi possível conectar o bot:',
-            erro
-        );
+        console.error('Não foi possível conectar o bot:', erro);
     });
-}
+                 }
