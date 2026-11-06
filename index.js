@@ -1288,14 +1288,48 @@ client.on('voiceStateUpdate', async (anterior, atual) => {
 
 client.on('messageCreate', async mensagem => {
     try {
-        const comandoPerfil = client.commands.get('perfil');
+        // Comandos por prefixo, como z?setgame.
+        const comandoSetgame = require('./commands/setgame');
+        if (comandoSetgame?.handleMessage && await comandoSetgame.handleMessage(mensagem)) return;
 
-        if (
-            comandoPerfil?.handleMessage &&
-            await comandoPerfil.handleMessage(mensagem)
-        ) {
-            return;
+        // Confirmação GO do sistema Free Fire.
+        if (!mensagem.author.bot && mensagem.guild && mensagem.channelId === '1568364484098269194'
+            && mensagem.content.trim().toLowerCase() === 'go') {
+            const FF = require('./commands/freefireCore');
+            const db = FF.readDB();
+            const pendentes = Object.values(db.matches).filter(m =>
+                m.status === 'waiting' &&
+                [m.captain1Id, m.captain2Id].includes(mensagem.author.id)
+            );
+            if (pendentes.length === 1) {
+                const match = pendentes[0];
+                if (!match.confirmations.includes(mensagem.author.id)) {
+                    match.confirmations.push(mensagem.author.id);
+                    if (match.confirmations.length >= 2 || match.startWarningSent) {
+                        match.status = 'started';
+                        match.startedAt = new Date().toISOString();
+                        FF.saveDB(db);
+                        await FF.sendContainer(mensagem.channel,
+                            `🟢 **${mensagem.author} confirmou o início da partida!** A partida começou oficialmente. **Confirmações: ${match.confirmations.length}/2.**`
+                        );
+                        await FF.sendLog(mensagem.guild, `# PARTIDA INICIADA\n\n**Partida:** #${match.id}\n**Capitães:** <@${match.captain1Id}> e <@${match.captain2Id}>`);
+                    } else {
+                        FF.saveDB(db);
+                        const outro = match.captain1Id === mensagem.author.id ? match.captain2Id : match.captain1Id;
+                        await FF.sendContainer(mensagem.channel,
+                            `🟢 **${mensagem.author} já confirmou o início da partida!** Agora falta somente <@${outro}> enviar **GO** para iniciar a partida. **Confirmações: 1/2.**`
+                        );
+                    }
+                }
+            } else if (pendentes.length > 1) {
+                await FF.sendContainer(mensagem.channel,
+                    `${mensagem.author}, você tem mais de uma partida aguardando confirmação. Para não misturar partidas, peça à equipe para identificar a partida antes de enviar GO.`
+                );
+            }
         }
+
+        const comandoPerfil = client.commands.get('perfil');
+        if (comandoPerfil?.handleMessage && await comandoPerfil.handleMessage(mensagem)) return;
 
         await publicarMensagem(mensagem);
     } catch (erro) {
@@ -1309,6 +1343,9 @@ client.on('messageCreate', async mensagem => {
 
 client.on('interactionCreate', async interaction => {
     try {
+        const comandoSetgame = require('./commands/setgame');
+        if (comandoSetgame?.handleInteraction && await comandoSetgame.handleInteraction(interaction)) return;
+
         // PERFIL
         const comandoPerfil = client.commands.get('perfil');
 
