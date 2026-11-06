@@ -13,9 +13,9 @@ const {
 const BANNER_PAINEL_CARGOS = 'https://media.discordapp.net/attachments/1559056011375943784/1563610129893425222/file_00000000e724820e8223219b519005ff.png?ex=6ae03b29&is=6adee9a9&hm=f55a74f77676b8b748a134340e59fbd57792069df4a2285ab33abf542ef9cf45&=&format=webp&quality=lossless';
 
 const cargos = [
-    { label: 'Win is win', value: '1559400783504478228' },
-    { label: 'Still here', value: '1559388168413782036' },
-    { label: 'The hell', value: '1559400831831248946' },
+    { label: 'the hell', value: '1559400831831248946' },
+    { label: 'still here', value: '1559388168413782036' },
+    { label: 'win is win', value: '1559400783504478228' },
     { label: 'my boo', value: '1559391484728451143' },
     { label: 'pusheens', value: '1559400782212636774' },
     { label: 'princess', value: '1559400313897754684' },
