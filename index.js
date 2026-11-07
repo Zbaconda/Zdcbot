@@ -1327,7 +1327,7 @@ const comandoSetgame = require('./commands/setgame');
                 if (match.confirmations.length >= 2) {
                     await FF.sendContainer(
                         mensagem.channel,
-                        `Confirmação recebida para a partida ${match.roomId}.`
+                        `Os dois jogadores confirmaram a partida #${match.id}!`
                     );
 
                     // Não aciona automaticamente serviços de apostas
