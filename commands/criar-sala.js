@@ -12,37 +12,12 @@ module.exports = {
 
     data: new SlashCommandBuilder()
         .setName('criar-sala')
-        .setDescription('Cria automaticamente uma sala no Free Fire')
+        .setDescription('Cria uma sala de Free Fire e escolhe um adversário')
 
         .addUserOption(option => option
-            .setName('capitao2')
-            .setDescription('Capitão da equipe adversária')
+            .setName('adversario')
+            .setDescription('Escolha quem será seu adversário')
             .setRequired(true)
-        )
-
-        .addStringOption(option => option
-            .setName('modo')
-            .setDescription('Formato da partida')
-            .setRequired(true)
-
-            .addChoices(
-                {
-                    name: '1x1',
-                    value: '1x1'
-                },
-                {
-                    name: '2x2',
-                    value: '2x2'
-                },
-                {
-                    name: '3x3',
-                    value: '3x3'
-                },
-                {
-                    name: '4x4',
-                    value: '4x4'
-                }
-            )
         ),
 
     async execute(interaction) {
@@ -60,23 +35,21 @@ module.exports = {
             });
         }
 
-        const captain2 =
-            interaction.options.getUser('capitao2');
-
-        const mode =
-            interaction.options.getString('modo');
+        const adversario =
+            interaction.options.getUser('adversario');
 
         // ==================================================
         // VERIFICAR ADVERSÁRIO
         // ==================================================
 
         if (
-            captain2.bot ||
-            captain2.id === interaction.user.id
+            !adversario ||
+            adversario.bot ||
+            adversario.id === interaction.user.id
         ) {
             return interaction.reply({
                 content:
-                    'Escolha outro membro como capitão da equipe adversária.',
+                    'Escolha outro membro como seu adversário.',
 
                 flags: MessageFlags.Ephemeral
             });
@@ -106,22 +79,15 @@ module.exports = {
                     'Criando sua sala no Free Fire pela NixFF...'
             });
 
+            // Somente os campos essenciais.
+            // AP Padrão e mapa padrão da NixFF.
             const room = await FF.createNixRoom({
 
                 password,
 
-                start_delay_minutes: 5,
-
                 config_type: 'ap_padrao',
 
-                room_name:
-                    `Zodiaco - Partida ${id} - ${mode}`,
-
-                map_name: 'Bermuda',
-
-                '1500_ouro': false,
-
-                carregamento: false
+                start_delay_minutes: 5
 
             });
 
@@ -150,13 +116,17 @@ module.exports = {
 
                 creatorId: interaction.user.id,
 
+                // Mantidos para compatibilidade com o GO
+                // que já existe no index.js.
                 captain1Id: interaction.user.id,
+                captain2Id: adversario.id,
 
-                captain2Id: captain2.id,
+                // Nome novo utilizado pelo sistema.
+                adversaryId: adversario.id,
 
-                mode,
+                map: 'Padrão',
 
-                map: 'Bermuda',
+                configType: 'ap_padrao',
 
                 roomId: String(room.room_id),
 
@@ -213,17 +183,17 @@ module.exports = {
 
                         `**Senha:** ${match.password}\n` +
 
-                        `**Mapa:** Bermuda\n` +
+                        `**Configuração:** AP Padrão\n` +
 
-                        `**Modo escolhido:** ${mode}\n` +
+                        `**Criador:** <@${interaction.user.id}>\n` +
 
-                        `**Capitão 1:** <@${interaction.user.id}>\n` +
+                        `**Adversário:** <@${adversario.id}>\n` +
 
-                        `**Capitão 2:** <@${captain2.id}>\n` +
+                        `**Confirmações:** 0/2\n` +
 
-                        `**Status:** Aberta\n\n` +
+                        `**Status:** Aguardando confirmação\n\n` +
 
-                        `Os dois capitães devem enviar **GO** neste canal para confirmar o início.` +
+                        `Somente o criador e o adversário podem enviar **GO**.` +
 
                         inviteLine
 
@@ -247,15 +217,13 @@ module.exports = {
 
                 `**Criador:** <@${interaction.user.id}>\n` +
 
-                `**Capitães:** <@${interaction.user.id}> e <@${captain2.id}>\n` +
+                `**Adversário:** <@${adversario.id}>\n` +
 
                 `**ID da sala:** ${match.roomId}\n` +
 
                 `**Senha:** ${match.password}\n` +
 
-                `**Modo escolhido:** ${mode}\n` +
-
-                `**Mapa:** Bermuda\n` +
+                `**Configuração:** AP Padrão\n` +
 
                 `**Session ID:** ${match.sessionId}\n` +
 
@@ -291,7 +259,7 @@ module.exports = {
                 await FF.sendContainer(
                     channel,
 
-                    `Nenhum capitão confirmou o início após 2 minutos. Um dos capitães pode enviar **GO** para iniciar a confirmação da partida.`
+                    `A partida #${id} ainda não recebeu confirmações. O criador ou o adversário pode enviar **GO**.`
                 );
 
             }, 2 * 60 * 1000);
