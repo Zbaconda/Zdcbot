@@ -564,12 +564,16 @@ async function confirmMatch(client, channel, userId, matchId) {
     }
 
     if (match.confirmations.includes(userId)) {
-        return {
-            ok: true,
-            duplicate: true,
-            match,
-            message: 'Sua presença já foi confirmada.'
-        };
+    if (match.confirmations.length >= 2) {
+        await startConfirmedMatch(client, match.id);
+    }
+
+    return {
+        ok: true,
+        duplicate: true,
+        match,
+        message: 'Sua presença já foi confirmada.'
+    };
     }
 
     match.confirmations.push(userId);
