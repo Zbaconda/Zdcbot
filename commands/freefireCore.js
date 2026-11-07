@@ -120,9 +120,9 @@ async function nixRequest(route, options = {}) {
 // ======================================================
 
 async function createNixRoom(body) {
-    return nixRequest('/rooms', {
-        method: 'POST',
-        body
+    return nixRequest('/rooms/create', {
+    method: 'POST',
+    body
     });
 }
 
