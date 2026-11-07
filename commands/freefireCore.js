@@ -12,6 +12,56 @@ const DATA_DIR = path.join(__dirname, '..', 'data');
 const FILE = path.join(DATA_DIR, 'freefire.json');
 const ADMIN_PERMISSION = 'Administrator';
 
+const NIX_API_BASE = 'https://salas.nixbot.vip';
+
+function generateRoomPassword() {
+    return String(Math.floor(Math.random() * 100)).padStart(2, '0');
+}
+
+async function nixRequest(route, options = {}) {
+    const token = process.env.NIX_API_TOKEN;
+    if (!token) {
+        const error = new Error('A variável NIX_API_TOKEN não está configurada.');
+        error.publicMessage = 'A integração NixFF ainda não está configurada. A equipe precisa adicionar NIX_API_TOKEN nas variáveis de ambiente da hospedagem.';
+        throw error;
+    }
+
+    const response = await fetch(`${NIX_API_BASE}${route}`, {
+        method: options.method || 'GET',
+        headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        },
+        body: options.body ? JSON.stringify(options.body) : undefined
+    });
+
+    const raw = await response.text();
+    let data = {};
+    try { data = raw ? JSON.parse(raw) : {}; } catch { data = { detail: raw }; }
+
+    if (!response.ok) {
+        const error = new Error(data.detail || `NixFF respondeu HTTP ${response.status}`);
+        error.status = response.status;
+        error.retryAfter = Number(response.headers.get('retry-after')) || 0;
+        error.publicMessage = response.status === 401 || response.status === 403
+            ? 'O token NixFF foi recusado. Confira a variável NIX_API_TOKEN na hospedagem.'
+            : response.status === 429
+                ? `A API NixFF está temporariamente limitada. Aguarde ${error.retryAfter || 60} segundos e tente novamente.`
+                : `A API NixFF não conseguiu criar a sala (HTTP ${response.status}). Tente novamente mais tarde.`;
+        throw error;
+    }
+
+    return data;
+}
+
+async function createNixRoom(body) {
+    return nixRequest('/rooms', { method: 'POST', body });
+}
+
+async function startNixRoom(sessionId) {
+    return nixRequest(`/rooms/${encodeURIComponent(sessionId)}/start`, { method: 'POST', body: {} });
+}
+
 fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(FILE)) fs.writeFileSync(FILE, JSON.stringify({
     nextId: 1, matches: {}, players: {}
@@ -102,5 +152,6 @@ function applyWin(db, winnerId, loserId, match, guild) {
 module.exports = {
     CHANNEL_ID, LOG_CHANNEL_ID, FILE, readDB, saveDB, isAdmin,
     isFreeFireChannel, makeContainer, sendContainer, sendLog,
-    getPlayer, addHistory, applyWin
+    getPlayer, addHistory, applyWin,
+    generateRoomPassword, createNixRoom, startNixRoom
 };
