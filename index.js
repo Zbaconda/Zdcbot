@@ -2505,3 +2505,997 @@ client.on('interactionCreate', async interaction => {
 
                         return responderErro(
                             interaction,
+                            'Não consegui retirar seu mute.'
+                        );
+                    }
+                }
+
+                if (!canal) {
+                    return responderErro(
+                        interaction,
+                        'Entre em uma chamada antes de usar esta ferramenta.'
+                    );
+                }
+
+                if (
+                    opcao === 'privar_call' ||
+                    opcao === 'desprivar_call'
+                ) {
+                    if (!podeAlterarPrivacidade(interaction, canal)) {
+                        return responderErro(
+                            interaction,
+                            'Você precisa estar na chamada que deseja controlar.'
+                        );
+                    }
+
+                    try {
+                        if (opcao === 'privar_call') {
+                            await privarCall(canal);
+
+                            return responderSucesso(
+                                interaction,
+                                'A chamada foi privatizada.'
+                            );
+                        }
+
+                        await liberarCall(canal);
+
+                        return responderSucesso(
+                            interaction,
+                            'A chamada voltou a ser pública.'
+                        );
+                    } catch (erro) {
+                        console.error('Erro ao alterar privacidade:', erro);
+
+                        return responderErro(
+                            interaction,
+                            'Não consegui alterar a privacidade.'
+                        );
+                    }
+                }
+
+                if (
+                    !ehCallTemporaria(canal) ||
+                    !podeControlarCall(interaction, canal)
+                ) {
+                    return responderErro(
+                        interaction,
+                        'Você precisa estar dentro de uma call temporária.'
+                    );
+                }
+
+                if (opcao === 'quantidade') {
+                    const modal = new ModalBuilder()
+                        .setCustomId('modal_limite_call')
+                        .setTitle('Limite da chamada');
+
+                    const campo = new TextInputBuilder()
+                        .setCustomId('limite')
+                        .setLabel('Limite de pessoas (0 a 99)')
+                        .setPlaceholder('Digite 0 para remover o limite')
+                        .setStyle(TextInputStyle.Short)
+                        .setRequired(true)
+                        .setMinLength(1)
+                        .setMaxLength(2);
+
+                    modal.addComponents(
+                        new ActionRowBuilder().addComponents(campo)
+                    );
+
+                    return interaction.showModal(modal);
+                }
+
+                if (opcao === 'mover') {
+                    const seletor = new UserSelectMenuBuilder()
+                        .setCustomId('call_selecionar_membro')
+                        .setPlaceholder('Escolha quem deseja mover')
+                        .setMinValues(1)
+                        .setMaxValues(1);
+
+                    return interaction.reply({
+                        content: 'Selecione quem deseja mover para sua call.',
+                        components: [
+                            new ActionRowBuilder().addComponents(seletor)
+                        ],
+                        flags: MessageFlags.Ephemeral
+                    });
+                }
+
+                if (opcao === 'mutar') {
+                    if (!ehBooster(interaction.member)) {
+                        return responderErro(
+                            interaction,
+                            'Este recurso é exclusivo para Boosters.'
+                        );
+                    }
+
+                    const seletor = new UserSelectMenuBuilder()
+                        .setCustomId('call_selecionar_mutar')
+                        .setPlaceholder('Escolha quem deseja mutar')
+                        .setMinValues(1)
+                        .setMaxValues(1);
+
+                    return interaction.reply({
+                        content: 'Selecione quem deseja mutar.',
+                        components: [
+                            new ActionRowBuilder().addComponents(seletor)
+                        ],
+                        flags: MessageFlags.Ephemeral
+                    });
+                }
+
+                return responderErro(
+                    interaction,
+                    'Esta ferramenta não é reconhecida.'
+                );
+            }
+
+            return;
+        }
+
+        // BOTÕES
+        if (interaction.isButton()) {
+            const id = interaction.customId;
+
+            // ==========================================
+            // BOTÕES FREE FIRE
+            // ==========================================
+
+            if (id.startsWith('ff_confirmar:')) {
+                const matchId = id.split(':')[1];
+
+                const resultado = await confirmarPartidaFF(
+                    matchId,
+                    interaction.user.id,
+                    interaction.channel
+                );
+
+                if (!resultado.ok) {
+                    return responderErro(interaction, resultado.mensagem);
+                }
+
+                return responderSucesso(interaction, resultado.mensagem);
+            }
+
+            if (id.startsWith('ff_copiar:')) {
+                const matchId = id.split(':')[1];
+                const resultado = await localizarPartidaFF(matchId);
+
+                if (!resultado) {
+                    return responderErro(interaction, 'Partida não encontrada.');
+                }
+
+                const { match } = resultado;
+
+                if (!obterParticipantesFF(match).includes(interaction.user.id)) {
+                    return responderErro(
+                        interaction,
+                        'Somente os participantes podem consultar os dados da sala.'
+                    );
+                }
+
+                return interaction.reply({
+                    content:
+                        `**ID da sala:** \`${match.roomId}\`\n` +
+                        `**Senha:** \`${match.password}\``,
+                    flags: MessageFlags.Ephemeral
+                });
+            }
+
+            if (id.startsWith('ff_convite:')) {
+                const matchId = id.split(':')[1];
+                const resultado = await localizarPartidaFF(matchId);
+
+                if (!resultado) {
+                    return responderErro(interaction, 'Partida não encontrada.');
+                }
+
+                const { match } = resultado;
+
+                if (!obterParticipantesFF(match).includes(interaction.user.id)) {
+                    return responderErro(
+                        interaction,
+                        'Somente os participantes podem consultar o convite.'
+                    );
+                }
+
+                const linkCanal =
+                    `https://discord.com/channels/${interaction.guildId}/${match.channelId}`;
+
+                return interaction.reply({
+                    content:
+                        '**Convite da partida**\n\n' +
+                        `**Sala:** \`${match.roomId}\`\n` +
+                        `**Senha:** \`${match.password}\`\n` +
+                        `**Painel no Discord:** ${linkCanal}\n` +
+                        (
+                            match.inviteLink
+                                ? `**Convite fornecido pela API:** ${match.inviteLink}`
+                                : ''
+                        ),
+                    flags: MessageFlags.Ephemeral
+                });
+            }
+
+            if (id.startsWith('ff_cancelar:')) {
+                const matchId = id.split(':')[1];
+
+                return cancelarPartidaFF(
+                    matchId,
+                    interaction.user.id,
+                    interaction.member,
+                    interaction
+                );
+            }
+
+            // ==========================================
+            // BOTÕES CALLS
+            // ==========================================
+
+            if (id === 'criar_call') {
+                return criarCallTemporaria(interaction);
+            }
+
+            if (id === 'abrir_controle_call') {
+                return interaction.reply({
+                    ...criarPainelCall(),
+                    flags: MessageFlags.Ephemeral
+                });
+            }
+
+            if (id === 'call_limite') {
+                const canal = obterCall(interaction);
+
+                if (
+                    !canal ||
+                    !ehCallTemporaria(canal) ||
+                    !podeControlarCall(interaction, canal)
+                ) {
+                    return responderErro(
+                        interaction,
+                        'Entre em uma call temporária para usar esse controle.'
+                    );
+                }
+
+                const modal = new ModalBuilder()
+                    .setCustomId('modal_limite_call')
+                    .setTitle('Limite da chamada');
+
+                const campo = new TextInputBuilder()
+                    .setCustomId('limite')
+                    .setLabel('Limite entre 0 e 99')
+                    .setPlaceholder('Digite 0 para remover o limite')
+                    .setStyle(TextInputStyle.Short)
+                    .setRequired(true)
+                    .setMinLength(1)
+                    .setMaxLength(2);
+
+                modal.addComponents(
+                    new ActionRowBuilder().addComponents(campo)
+                );
+
+                return interaction.showModal(modal);
+            }
+
+            if (id === 'call_mover') {
+                const canal = obterCall(interaction);
+
+                if (
+                    !canal ||
+                    !ehCallTemporaria(canal) ||
+                    !podeControlarCall(interaction, canal)
+                ) {
+                    return responderErro(
+                        interaction,
+                        'Entre em uma call temporária para usar esse controle.'
+                    );
+                }
+
+                const seletor = new UserSelectMenuBuilder()
+                    .setCustomId('call_selecionar_membro')
+                    .setPlaceholder('Escolha quem deseja mover')
+                    .setMinValues(1)
+                    .setMaxValues(1);
+
+                return interaction.reply({
+                    content: 'Selecione quem deseja mover para sua call.',
+                    components: [
+                        new ActionRowBuilder().addComponents(seletor)
+                    ],
+                    flags: MessageFlags.Ephemeral
+                });
+            }
+
+            if (id === 'call_mutar') {
+                if (!ehBooster(interaction.member)) {
+                    return responderErro(
+                        interaction,
+                        'Este recurso é exclusivo para Boosters.'
+                    );
+                }
+
+                const canal = obterCall(interaction);
+
+                if (
+                    !canal ||
+                    !ehCallTemporaria(canal) ||
+                    !podeControlarCall(interaction, canal)
+                ) {
+                    return responderErro(
+                        interaction,
+                        'Entre em uma call temporária para usar esse controle.'
+                    );
+                }
+
+                const seletor = new UserSelectMenuBuilder()
+                    .setCustomId('call_selecionar_mutar')
+                    .setPlaceholder('Escolha quem deseja mutar')
+                    .setMinValues(1)
+                    .setMaxValues(1);
+
+                return interaction.reply({
+                    content: 'Selecione quem deseja mutar.',
+                    components: [
+                        new ActionRowBuilder().addComponents(seletor)
+                    ],
+                    flags: MessageFlags.Ephemeral
+                });
+            }
+
+            if (id === 'call_desmutar') {
+                if (!interaction.member?.voice?.channel) {
+                    return responderErro(
+                        interaction,
+                        'Entre em uma call primeiro.'
+                    );
+                }
+
+                try {
+                    await interaction.member.voice.setMute(false);
+
+                    return responderSucesso(
+                        interaction,
+                        'Seu mute de servidor foi removido.'
+                    );
+                } catch (erro) {
+                    console.error('Erro ao desmutar:', erro);
+
+                    return responderErro(
+                        interaction,
+                        'Não consegui retirar seu mute.'
+                    );
+                }
+            }
+
+            if (id === 'call_privada' || id === 'call_publica') {
+                const canal = obterCall(interaction);
+
+                if (!canal) {
+                    return responderErro(
+                        interaction,
+                        'Entre em uma chamada primeiro.'
+                    );
+                }
+
+                if (!podeAlterarPrivacidade(interaction, canal)) {
+                    return responderErro(
+                        interaction,
+                        'Você precisa estar na chamada que deseja controlar.'
+                    );
+                }
+
+                try {
+                    if (id === 'call_privada') {
+                        await privarCall(canal);
+
+                        return responderSucesso(
+                            interaction,
+                            'Sua call foi privatizada.'
+                        );
+                    }
+
+                    await liberarCall(canal);
+
+                    return responderSucesso(
+                        interaction,
+                        'Sua call voltou a ser pública.'
+                    );
+                } catch (erro) {
+                    console.error('Erro ao alterar privacidade:', erro);
+
+                    return responderErro(
+                        interaction,
+                        'Não consegui alterar a privacidade.'
+                    );
+                }
+            }
+
+            // ==========================================
+            // PUBLICAÇÕES
+            // ==========================================
+
+            if (id.startsWith('pub_like_')) {
+                const publicacaoId = id.slice('pub_like_'.length);
+                const publicacoes = obterPublicacoes();
+                const publicacao = publicacoes[publicacaoId];
+
+                if (!publicacao) {
+                    return responderErro(
+                        interaction,
+                        'Publicação não encontrada.'
+                    );
+                }
+
+                if (!Array.isArray(publicacao.curtidas)) {
+                    publicacao.curtidas = [];
+                }
+
+                const indice = publicacao.curtidas.indexOf(
+                    interaction.user.id
+                );
+
+                if (indice !== -1) {
+                    publicacao.curtidas.splice(indice, 1);
+                } else {
+                    publicacao.curtidas.push(interaction.user.id);
+                }
+
+                salvarPublicacoes(publicacoes);
+                atualizarVerificacoes(publicacoes);
+
+                const verificado = usuarioVerificado(publicacao.autorId);
+
+                for (const item of Object.values(publicacoes)) {
+                    if (item.autorId === publicacao.autorId) {
+                        item.verificado = verificado;
+                    }
+                }
+
+                salvarPublicacoes(publicacoes);
+
+                await interaction.deferReply({
+                    flags: MessageFlags.Ephemeral
+                });
+
+                await atualizarCardPublicacao(publicacaoId);
+
+                return interaction.editReply({
+                    content: indice !== -1
+                        ? 'Você removeu sua curtida.'
+                        : 'Você curtiu a publicação!'
+                });
+            }
+
+            if (id.startsWith('pub_comentar_')) {
+                const publicacaoId = id.slice('pub_comentar_'.length);
+                const publicacao = obterPublicacoes()[publicacaoId];
+
+                if (!publicacao) {
+                    return responderErro(
+                        interaction,
+                        'Publicação não encontrada.'
+                    );
+                }
+
+                const modal = new ModalBuilder()
+                    .setCustomId(`modal_comentario_${publicacaoId}`)
+                    .setTitle('Comentar publicação');
+
+                const campo = new TextInputBuilder()
+                    .setCustomId('comentario')
+                    .setLabel('Escreva seu comentário')
+                    .setStyle(TextInputStyle.Paragraph)
+                    .setRequired(true)
+                    .setMaxLength(1000);
+
+                modal.addComponents(
+                    new ActionRowBuilder().addComponents(campo)
+                );
+
+                return interaction.showModal(modal);
+            }
+
+            if (id.startsWith('pub_republicar_')) {
+                const publicacaoId = id.slice('pub_republicar_'.length);
+                const publicacoes = obterPublicacoes();
+                const publicacao = publicacoes[publicacaoId];
+
+                if (!publicacao) {
+                    return responderErro(
+                        interaction,
+                        'Publicação não encontrada.'
+                    );
+                }
+
+                if (!Array.isArray(publicacao.republicacoes)) {
+                    publicacao.republicacoes = [];
+                }
+
+                const usuarioId = interaction.user.id;
+                const indice = publicacao.republicacoes.indexOf(usuarioId);
+
+                await interaction.deferReply({
+                    flags: MessageFlags.Ephemeral
+                });
+
+                if (indice !== -1) {
+                    publicacao.republicacoes.splice(indice, 1);
+                    salvarPublicacoes(publicacoes);
+                    await atualizarCardPublicacao(publicacaoId);
+
+                    return interaction.editReply({
+                        content: 'Você desfez sua republicação.'
+                    });
+                }
+
+                publicacao.republicacoes.push(usuarioId);
+                salvarPublicacoes(publicacoes);
+                await atualizarCardPublicacao(publicacaoId);
+
+                const link = publicacao.mensagemPublicadaId
+                    ? `https://discord.com/channels/${publicacao.guildId}/${publicacao.canalId}/${publicacao.mensagemPublicadaId}`
+                    : 'Link indisponível.';
+
+                return interaction.editReply({
+                    content:
+                        `**${interaction.user.username} republicou uma publicação.**\n` +
+                        `Publicação original: ${link}`
+                });
+            }
+
+            if (id.startsWith('pub_detalhes_')) {
+                const publicacaoId = id.slice('pub_detalhes_'.length);
+                const publicacao = obterPublicacoes()[publicacaoId];
+
+                if (!publicacao) {
+                    return responderErro(
+                        interaction,
+                        'Publicação não encontrada.'
+                    );
+                }
+
+                const curtidas = publicacao.curtidas || [];
+                const comentarios = publicacao.comentarios || [];
+                const republicacoes = publicacao.republicacoes || [];
+
+                const listaCurtidas = curtidas.length
+                    ? curtidas.slice(0, 15)
+                        .map(usuarioId => `<@${usuarioId}>`)
+                        .join(', ')
+                    : 'Ninguém curtiu ainda.';
+
+                const listaRepublicacoes = republicacoes.length
+                    ? republicacoes.slice(0, 15)
+                        .map(usuarioId => `<@${usuarioId}>`)
+                        .join(', ')
+                    : 'Ninguém republicou ainda.';
+
+                const listaComentarios = comentarios.length
+                    ? comentarios.slice(-10).map(comentario =>
+                        `**${comentario.autorNome || 'Usuário'}:** ${comentario.texto}`
+                    ).join('\n\n')
+                    : 'Nenhum comentário ainda.';
+
+                const painelDetalhes = new ContainerBuilder()
+                    .addTextDisplayComponents(
+                        new TextDisplayBuilder().setContent(
+                            '# Informações da publicação\n\n' +
+                            `**Autor:** <@${publicacao.autorId}>\n` +
+                            `**Curtidas:** ${curtidas.length}\n` +
+                            `**Comentários:** ${comentarios.length}\n` +
+                            `**Republicações:** ${republicacoes.length}\n\n` +
+                            '## Pessoas que curtiram\n' +
+                            `${listaCurtidas}\n\n` +
+                            '## Pessoas que republicaram\n' +
+                            `${listaRepublicacoes}\n\n` +
+                            '## Comentários recentes\n' +
+                            `${listaComentarios.slice(0, 2500)}`
+                        )
+                    );
+
+                return interaction.reply({
+                    components: [painelDetalhes],
+                    flags: MessageFlags.Ephemeral |
+                        MessageFlags.IsComponentsV2
+                });
+            }
+
+            return;
+        }
+
+        // ==================================================
+        // MENUS DE USUÁRIOS
+        // ==================================================
+
+        if (interaction.isUserSelectMenu()) {
+            const id = interaction.customId;
+
+            if (![
+                'mover_membro',
+                'call_selecionar_membro',
+                'call_selecionar_mutar'
+            ].includes(id)) {
+                return;
+            }
+
+            const canal = obterCall(interaction);
+
+            if (
+                !canal ||
+                !ehCallTemporaria(canal) ||
+                !podeControlarCall(interaction, canal)
+            ) {
+                return responderErro(
+                    interaction,
+                    'Entre em uma call temporária para usar esse controle.'
+                );
+            }
+
+            const alvo = await interaction.guild.members
+                .fetch(interaction.values[0])
+                .catch(() => null);
+
+            if (!alvo) {
+                return responderErro(
+                    interaction,
+                    'Não encontrei esse membro.'
+                );
+            }
+
+            if (id === 'call_selecionar_mutar') {
+                if (!ehBooster(interaction.member)) {
+                    return responderErro(
+                        interaction,
+                        'Opção exclusiva para Boosters.'
+                    );
+                }
+
+                if (alvo.id === interaction.user.id) {
+                    return responderErro(
+                        interaction,
+                        'Selecione outro membro.'
+                    );
+                }
+
+                if (alvo.voice.channelId !== canal.id) {
+                    return responderErro(
+                        interaction,
+                        'O membro precisa estar na sua call.'
+                    );
+                }
+
+                try {
+                    await alvo.voice.setMute(true);
+
+                    return interaction.update({
+                        content: `${alvo} foi mutado no servidor.`,
+                        components: []
+                    });
+                } catch (erro) {
+                    console.error('Erro ao mutar membro:', erro);
+
+                    return responderErro(
+                        interaction,
+                        'Não consegui mutar esse membro.'
+                    );
+                }
+            }
+
+            if (!alvo.voice.channel) {
+                return responderErro(
+                    interaction,
+                    'Esse membro não está em uma call.'
+                );
+            }
+
+            if (alvo.id === interaction.user.id) {
+                return responderErro(
+                    interaction,
+                    'Selecione outro membro.'
+                );
+            }
+
+            if (id === 'mover_membro') {
+                const seletor = new ChannelSelectMenuBuilder()
+                    .setCustomId(`mover_canal:${alvo.id}`)
+                    .setPlaceholder('Escolha a call de destino')
+                    .setChannelTypes(
+                        ChannelType.GuildVoice,
+                        ChannelType.GuildStageVoice
+                    )
+                    .setMinValues(1)
+                    .setMaxValues(1);
+
+                return interaction.update({
+                    content:
+                        `Membro selecionado: **${alvo.user.username}**\n` +
+                        'Escolha a call de destino:',
+                    components: [
+                        new ActionRowBuilder().addComponents(seletor)
+                    ]
+                });
+            }
+
+            const botMembro = await interaction.guild.members.fetchMe();
+
+            if (!botMembro.permissions.has(PermissionFlagsBits.MoveMembers)) {
+                return responderErro(
+                    interaction,
+                    'Preciso da permissão Mover membros.'
+                );
+            }
+
+            try {
+                await alvo.voice.setChannel(canal);
+
+                return interaction.update({
+                    content: `${alvo} foi movido para ${canal}.`,
+                    components: []
+                });
+            } catch (erro) {
+                console.error('Erro ao mover membro:', erro);
+
+                return responderErro(
+                    interaction,
+                    'Não consegui mover esse membro.'
+                );
+            }
+        }
+
+        // ==================================================
+        // MENU DE CANAL DE DESTINO
+        // ==================================================
+
+        if (
+            interaction.isChannelSelectMenu() &&
+            interaction.customId.startsWith('mover_canal:')
+        ) {
+            const canalAtual = obterCall(interaction);
+
+            if (
+                !canalAtual ||
+                !ehCallTemporaria(canalAtual) ||
+                !podeControlarCall(interaction, canalAtual)
+            ) {
+                return responderErro(
+                    interaction,
+                    'Entre em uma call temporária para usar esse controle.'
+                );
+            }
+
+            const alvoId = interaction.customId.split(':')[1];
+
+            const alvo = await interaction.guild.members
+                .fetch(alvoId)
+                .catch(() => null);
+
+            if (!alvo || !alvo.voice.channel) {
+                return responderErro(
+                    interaction,
+                    'Esse membro não está mais em uma call.'
+                );
+            }
+
+            const destino = await interaction.guild.channels
+                .fetch(interaction.values[0])
+                .catch(() => null);
+
+            if (
+                !destino ||
+                ![
+                    ChannelType.GuildVoice,
+                    ChannelType.GuildStageVoice
+                ].includes(destino.type)
+            ) {
+                return responderErro(
+                    interaction,
+                    'Canal de destino inválido.'
+                );
+            }
+
+            const botMembro = await interaction.guild.members.fetchMe();
+
+            if (!botMembro.permissions.has(PermissionFlagsBits.MoveMembers)) {
+                return responderErro(
+                    interaction,
+                    'Preciso da permissão Mover membros.'
+                );
+            }
+
+            try {
+                await alvo.voice.setChannel(destino);
+
+                return interaction.update({
+                    content: `${alvo} foi movido para ${destino}.`,
+                    components: []
+                });
+            } catch (erro) {
+                console.error('Erro ao mover membro:', erro);
+
+                return responderErro(
+                    interaction,
+                    'Não consegui mover o membro para essa call.'
+                );
+            }
+        }
+
+        // ==================================================
+        // MODAIS
+        // ==================================================
+
+        if (interaction.isModalSubmit()) {
+            if (interaction.customId === 'modal_limite_call') {
+                const canal = obterCall(interaction);
+
+                if (
+                    !canal ||
+                    !ehCallTemporaria(canal) ||
+                    !podeControlarCall(interaction, canal)
+                ) {
+                    return responderErro(
+                        interaction,
+                        'Entre em uma call temporária para usar esse controle.'
+                    );
+                }
+
+                const valor = interaction.fields
+                    .getTextInputValue('limite')
+                    .trim();
+
+                if (!/^\d{1,2}$/.test(valor) || Number(valor) > 99) {
+                    return responderErro(
+                        interaction,
+                        'Digite um número de 0 a 99.'
+                    );
+                }
+
+                try {
+                    await canal.setUserLimit(Number(valor));
+
+                    return responderSucesso(
+                        interaction,
+                        Number(valor) === 0
+                            ? 'Limite removido.'
+                            : `Limite definido para ${valor} pessoas.`
+                    );
+                } catch (erro) {
+                    console.error('Erro ao definir limite:', erro);
+
+                    return responderErro(
+                        interaction,
+                        'Não consegui alterar o limite da call.'
+                    );
+                }
+            }
+
+            if (interaction.customId === 'modal_mutar_membro') {
+                const membro = await interaction.guild.members
+                    .fetch(interaction.user.id);
+
+                if (!ehBooster(membro)) {
+                    return responderErro(
+                        interaction,
+                        'Opção exclusiva para Boosters.'
+                    );
+                }
+
+                const idMembro = interaction.fields
+                    .getTextInputValue('id_membro')
+                    .trim();
+
+                const alvo = await interaction.guild.members
+                    .fetch(idMembro)
+                    .catch(() => null);
+
+                if (!alvo || !alvo.voice.channel) {
+                    return responderErro(
+                        interaction,
+                        'Não encontrei esse membro em uma call.'
+                    );
+                }
+
+                try {
+                    await alvo.voice.setMute(true);
+
+                    return responderSucesso(
+                        interaction,
+                        'Membro mutado com sucesso.'
+                    );
+                } catch (erro) {
+                    console.error('Erro ao mutar membro:', erro);
+
+                    return responderErro(
+                        interaction,
+                        'Não consegui mutar esse membro.'
+                    );
+                }
+            }
+
+            if (interaction.customId.startsWith('modal_comentario_')) {
+                const publicacaoId = interaction.customId
+                    .slice('modal_comentario_'.length);
+
+                const publicacoes = obterPublicacoes();
+                const publicacao = publicacoes[publicacaoId];
+
+                if (!publicacao) {
+                    return responderErro(
+                        interaction,
+                        'Publicação não encontrada.'
+                    );
+                }
+
+                const comentario = interaction.fields
+                    .getTextInputValue('comentario')
+                    .trim();
+
+                if (!comentario) {
+                    return responderErro(
+                        interaction,
+                        'Escreva um comentário.'
+                    );
+                }
+
+                if (!Array.isArray(publicacao.comentarios)) {
+                    publicacao.comentarios = [];
+                }
+
+                publicacao.comentarios.push({
+                    autorId: interaction.user.id,
+                    autorNome: interaction.member?.displayName ||
+                        interaction.user.globalName ||
+                        interaction.user.username,
+                    texto: comentario.slice(0, 1000),
+                    data: new Date().toISOString()
+                });
+
+                salvarPublicacoes(publicacoes);
+
+                await interaction.deferReply({
+                    flags: MessageFlags.Ephemeral
+                });
+
+                await atualizarCardPublicacao(publicacaoId);
+
+                return interaction.editReply({
+                    content: 'Seu comentário foi registrado!'
+                });
+            }
+
+            return;
+        }
+    } catch (erro) {
+        console.error('Erro geral em interactionCreate:', erro);
+
+        await responderErro(
+            interaction,
+            'Ocorreu um erro ao processar essa interação.'
+        );
+    }
+});
+
+// ======================================================
+// ERROS
+// ======================================================
+
+process.on('unhandledRejection', erro => {
+    console.error('Erro não tratado (Promise):', erro);
+});
+
+process.on('uncaughtException', erro => {
+    console.error('Erro não tratado:', erro);
+});
+
+// ======================================================
+// LOGIN
+// ======================================================
+
+if (!TOKEN) {
+    console.error(
+        'DISCORD_TOKEN não foi encontrado nas variáveis de ambiente.'
+    );
+} else {
+    client.login(TOKEN).catch(erro => {
+        console.error('Não foi possível conectar o bot:', erro);
+    });
+    }
