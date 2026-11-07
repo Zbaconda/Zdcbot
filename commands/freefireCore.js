@@ -266,22 +266,18 @@ async function nixRequest(endpoint, options = {}) {
 }
 
 // ======================================================
-// CRIAÇÃO DE SALA
+// GERAÇÃO DA SENHA NUMÉRICA
 // ======================================================
 
 function generateRoomPassword() {
-    const caracteres = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-
-    let senha = '';
-
-    for (let i = 0; i < 6; i++) {
-        senha += caracteres[
-            Math.floor(Math.random() * caracteres.length)
-        ];
-    }
-
-    return senha;
+    return String(
+        Math.floor(Math.random() * 100)
+    ).padStart(2, '0');
 }
+
+// ======================================================
+// CRIAÇÃO DE SALA
+// ======================================================
 
 async function createNixRoom(config = {}) {
     const password =
