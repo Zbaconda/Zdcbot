@@ -19,6 +19,11 @@ const FILE = path.join(DATA_DIR, 'freefire.json');
 const ADMIN_PERMISSION = 'Administrator';
 const NIX_API_BASE = 'https://salas.nixbot.vip';
 
+// Rota configurável.
+// Padrão: POST /rooms, conforme a documentação da API.
+const NIX_CREATE_PATH =
+    process.env.NIXFF_CREATE_PATH || '/rooms';
+
 function generateRoomPassword() {
     return String(
         Math.floor(Math.random() * 100)
@@ -54,7 +59,7 @@ async function nixRequest(route, options = {}) {
                 'Content-Type': 'application/json'
             },
 
-            body: options.body
+            body: options.body !== undefined
                 ? JSON.stringify(options.body)
                 : undefined,
 
@@ -91,7 +96,10 @@ async function nixRequest(route, options = {}) {
                 'Sua API Key não possui permissão para criar salas.';
         } else if (response.status === 404) {
             error.publicMessage =
-                'A sessão solicitada não foi encontrada na NixFF.';
+                'A rota ou sessão solicitada não foi encontrada na NixFF.';
+        } else if (response.status === 405) {
+            error.publicMessage =
+                `A NixFF não aceita esse método nessa rota (HTTP 405). Rota utilizada: ${route}. Confira NIXFF_CREATE_PATH.`;
         } else if (response.status === 409) {
             error.publicMessage =
                 'A ação não pode ser realizada no estado atual da sala.';
@@ -120,9 +128,9 @@ async function nixRequest(route, options = {}) {
 // ======================================================
 
 async function createNixRoom(body) {
-    return nixRequest('/rooms/create', {
-    method: 'POST',
-    body
+    return nixRequest(NIX_CREATE_PATH, {
+        method: 'POST',
+        body
     });
 }
 
@@ -303,7 +311,6 @@ function getPlayer(db, id) {
 
 function addHistory(player, item) {
     player.history.unshift(item);
-
     player.history = player.history.slice(0, 30);
 }
 
