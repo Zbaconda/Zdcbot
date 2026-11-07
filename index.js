@@ -1292,7 +1292,8 @@ client.on('messageCreate', async mensagem => {
         const comandoSetgame = require('./commands/setgame');
         if (comandoSetgame?.handleMessage && await comandoSetgame.handleMessage(mensagem)) return;
 
-        // Confirmação GO do sistema Free Fire.
+        // Confirmação GO do sistema Free Fire: quando os dois capitães confirmam,
+        // o bot solicita à API NixFF que inicie a sala real dentro do jogo.
         if (!mensagem.author.bot && mensagem.guild && mensagem.channelId === '1568364484098269194'
             && mensagem.content.trim().toLowerCase() === 'go') {
             const FF = require('./commands/freefireCore');
@@ -1301,23 +1302,47 @@ client.on('messageCreate', async mensagem => {
                 m.status === 'waiting' &&
                 [m.captain1Id, m.captain2Id].includes(mensagem.author.id)
             );
+
             if (pendentes.length === 1) {
                 const match = pendentes[0];
                 if (!match.confirmations.includes(mensagem.author.id)) {
                     match.confirmations.push(mensagem.author.id);
+
                     if (match.confirmations.length >= 2 || match.startWarningSent) {
-                        match.status = 'started';
-                        match.startedAt = new Date().toISOString();
-                        FF.saveDB(db);
                         await FF.sendContainer(mensagem.channel,
-                            `🟢 **${mensagem.author} confirmou o início da partida!** A partida começou oficialmente. **Confirmações: ${match.confirmations.length}/2.**`
+                            `Confirmação recebida. Estou iniciando a sala **${match.roomId}** pela API NixFF. Aguarde.`
                         );
-                        await FF.sendLog(mensagem.guild, `# PARTIDA INICIADA\n\n**Partida:** #${match.id}\n**Capitães:** <@${match.captain1Id}> e <@${match.captain2Id}>`);
+                        try {
+                            await FF.startNixRoom(match.sessionId);
+                            match.status = 'started';
+                            match.startedAt = new Date().toISOString();
+                            match.apiStatus = 'started';
+                            FF.saveDB(db);
+                            await FF.sendContainer(mensagem.channel,
+                                `# PARTIDA INICIADA\n\n` +
+                                `**ID da sala:** ${match.roomId}\n` +
+                                `**Modo escolhido:** ${match.mode}\n` +
+                                `**Capitães:** <@${match.captain1Id}> e <@${match.captain2Id}>\n` +
+                                `**Status:** Iniciada`
+                            );
+                            await FF.sendLog(mensagem.guild,
+                                `# PARTIDA INICIADA\n\n**Partida:** #${match.id}\n**ID da sala:** ${match.roomId}\n**Capitães:** <@${match.captain1Id}> e <@${match.captain2Id}>`
+                            );
+                        } catch (error) {
+                            console.error('Erro ao iniciar sala NixFF:', error);
+                            match.confirmations = match.confirmations.filter(id => id !== mensagem.author.id);
+                            FF.saveDB(db);
+                            await FF.sendContainer(mensagem.channel,
+                                error?.status === 409
+                                    ? `A sala **${match.roomId}** não pode ser iniciada porque não está mais no estado disponível.`
+                                    : `Não consegui iniciar a sala **${match.roomId}** pela API NixFF. A confirmação foi mantida? Não: envie **GO** novamente depois de verificar a sala.`
+                            );
+                        }
                     } else {
                         FF.saveDB(db);
                         const outro = match.captain1Id === mensagem.author.id ? match.captain2Id : match.captain1Id;
                         await FF.sendContainer(mensagem.channel,
-                            `🟢 **${mensagem.author} já confirmou o início da partida!** Agora falta somente <@${outro}> enviar **GO** para iniciar a partida. **Confirmações: 1/2.**`
+                            `${mensagem.author} já confirmou o início da partida! Agora falta somente <@${outro}> enviar **GO** para iniciar a partida. **Confirmações: 1/2.**`
                         );
                     }
                 }
