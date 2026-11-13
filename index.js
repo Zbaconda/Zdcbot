@@ -48,7 +48,7 @@ const BANNER_PAINEL_CALL = 'https://media.discordapp.net/attachments/15590560113
 
 const FUSO_HORARIO = 'America/Sao_Paulo';
 const TEMPO_EXCLUSAO_CALL_VAZIA = 10000;
-const TEMPO_EXCLUSAO_BOAS_VINDAS = 10000;
+const TEMPO_EXCLUSAO_BOAS_VINDAS = 17000;
 const INTERVALO_ATIVIDADE = 10 * 60 * 60 * 1000;
 const LIMITE_VERIFICACAO = 40;
 
@@ -1252,13 +1252,20 @@ client.on('guildMemberAdd', async membro => {
             return;
         }
 
-        // Envia a mensagem de boas-vindas.
-        const mensagemBoasVindas = await canal.send({
-            content:
-                `# <:zodiaco:1559716108292849684> Seja bem-vindo(a), ${membro}!\n` +
-                `Que bom ter você na **${membro.guild.name}**!\n` +
-                `Fique à vontade e aproveite nosso servidor! 🎉`,
+        // Cria o container de boas-vindas com a cor padrão do Discord.
+        const containerBoasVindas = new ContainerBuilder()
+            .addTextDisplayComponents(
+                new TextDisplayBuilder().setContent(
+                    `# <:zodiaco:1559716108292849684> Seja bem-vindo(a), ${membro}!\n` +
+                    `Que bom ter você na **${membro.guild.name}**!\n` +
+                    `Fique à vontade e aproveite nosso servidor! 🎉`
+                )
+            );
 
+        // Envia a mensagem no formato Components V2.
+        const mensagemBoasVindas = await canal.send({
+            components: [containerBoasVindas],
+            flags: MessageFlags.IsComponentsV2,
             allowedMentions: {
                 users: [membro.id]
             }
@@ -1268,13 +1275,13 @@ client.on('guildMemberAdd', async membro => {
             `[BOAS-VINDAS] Mensagem enviada para ${membro.user.tag}.`
         );
 
-        // Apaga somente a mensagem de boas-vindas após 10 segundos.
+        // Apaga somente a mensagem de boas-vindas após 17 segundos.
         setTimeout(async () => {
             try {
                 await mensagemBoasVindas.delete();
 
                 console.log(
-                    `[BOAS-VINDAS] Mensagem de ${membro.user.tag} apagada após 10 segundos.`
+                    `[BOAS-VINDAS] Mensagem de ${membro.user.tag} apagada após 17 segundos.`
                 );
             } catch (erro) {
                 console.error(
