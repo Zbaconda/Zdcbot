@@ -42,11 +42,13 @@ const CATEGORIA_CALL = '1560763293994323999';
 const CARGO_BOOSTER = '1559367297053757551';
 const CANAL_PUBLICACOES_ID = '1567571023061057657';
 const CANAL_LIMPEZA_ID = '1559375230202290256';
+const CANAL_BOAS_VINDAS_ID = '1570657702051319908';
 
 const BANNER_PAINEL_CALL = 'https://media.discordapp.net/attachments/1559056011375943784/1563610071886331994/file_0000000060b8820e9ce7fd5014b9b33a.png?ex=6ae03b1b&is=6adee99b&hm=89cc9ed84a2ef5f71ddaccaa52f5c6caff67303cb83988cc308da4f0907a89d5&=&format=webp&quality=lossless';
 
 const FUSO_HORARIO = 'America/Sao_Paulo';
 const TEMPO_EXCLUSAO_CALL_VAZIA = 10000;
+const TEMPO_EXCLUSAO_BOAS_VINDAS = 10000;
 const INTERVALO_ATIVIDADE = 10 * 60 * 60 * 1000;
 const LIMITE_VERIFICACAO = 40;
 
@@ -1227,14 +1229,66 @@ client.once('clientReady', async () => {
 });
 
 // ======================================================
-// BOAS-VINDAS
+// SISTEMA DE BOAS-VINDAS AUTOMÁTICAS
 // ======================================================
 
 client.on('guildMemberAdd', async membro => {
     try {
-        await require('./commands/boasvindas').handleMemberAdd(membro);
+        console.log(
+            `[BOAS-VINDAS] Novo membro detectado: ${membro.user.tag}`
+        );
+
+        // Não enviar boas-vindas para bots.
+        if (membro.user.bot) return;
+
+        const canal = await membro.guild.channels
+            .fetch(CANAL_BOAS_VINDAS_ID)
+            .catch(() => null);
+
+        if (!canal || !canal.isTextBased() || !canal.send) {
+            console.error(
+                '[BOAS-VINDAS] Canal não encontrado ou não é um canal de texto.'
+            );
+            return;
+        }
+
+        // Envia a mensagem de boas-vindas.
+        const mensagemBoasVindas = await canal.send({
+            content:
+                `# <:zodiaco:1559716108292849684> Seja bem-vindo(a), ${membro}!\n` +
+                `Que bom ter você na **${membro.guild.name}**!\n` +
+                `Fique à vontade e aproveite nosso servidor! 🎉`,
+
+            allowedMentions: {
+                users: [membro.id]
+            }
+        });
+
+        console.log(
+            `[BOAS-VINDAS] Mensagem enviada para ${membro.user.tag}.`
+        );
+
+        // Apaga somente a mensagem de boas-vindas após 10 segundos.
+        setTimeout(async () => {
+            try {
+                await mensagemBoasVindas.delete();
+
+                console.log(
+                    `[BOAS-VINDAS] Mensagem de ${membro.user.tag} apagada após 10 segundos.`
+                );
+            } catch (erro) {
+                console.error(
+                    '[BOAS-VINDAS] Não consegui apagar a mensagem:',
+                    erro.message
+                );
+            }
+        }, TEMPO_EXCLUSAO_BOAS_VINDAS);
+
     } catch (erro) {
-        console.error('Erro em guildMemberAdd:', erro);
+        console.error(
+            '[BOAS-VINDAS] Erro ao enviar mensagem:',
+            erro
+        );
     }
 });
 
@@ -2300,4 +2354,4 @@ if (!TOKEN) {
     client.login(TOKEN).catch(erro => {
         console.error('Não foi possível conectar o bot:', erro);
     });
-    }
+                         }
