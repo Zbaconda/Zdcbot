@@ -1227,6 +1227,18 @@ client.once('clientReady', async () => {
 });
 
 // ======================================================
+// BOAS-VINDAS
+// ======================================================
+
+client.on('guildMemberAdd', async membro => {
+    try {
+        await require('./commands/boasvindas').handleMemberAdd(membro);
+    } catch (erro) {
+        console.error('Erro em guildMemberAdd:', erro);
+    }
+});
+
+// ======================================================
 // ATUALIZAÇÃO DE VOZ
 // ======================================================
 
